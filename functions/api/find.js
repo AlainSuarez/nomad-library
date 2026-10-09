@@ -23,6 +23,8 @@ export async function onRequestPost(ctx) {
   };
   const hits = await Promise.all(items.map(async it => {
     // Some libraries file foreign films under the original title ("Tonari no Totoro").
+    // Very short original titles ("X", "M") would match unrelated films, so they're ignored.
+    if (it.o && key(it.o).length < 4) it.o = "";
     const keys = [key(it.t), it.o && key(it.o)].filter(Boolean);
     let out = await search(it.t || "", keys);
     if (!out.length && it.o && key(it.o) !== key(it.t)) out = await search(it.o, keys);

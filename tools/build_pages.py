@@ -9,6 +9,7 @@ HEAD = """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<script>if (location.hostname.endsWith(".pages.dev")) location.replace("https://library.nomadovernormal.com" + location.pathname + location.search);</script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{title} · Nomad Library</title>
 <meta name="description" content="{desc}">

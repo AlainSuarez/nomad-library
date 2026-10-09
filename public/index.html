@@ -62,7 +62,17 @@
         <span>Just looking?</span>
         <button data-lib="seattle">Try Seattle's library</button>
       </div>
-      <p class="have-acct">Already have an account? <button class="link" id="pickSignin">Sign in</button></p>
+      <div class="home-acct" id="homeOut">
+        <p>Save your library, favorites and watchlist on every device. No email or password needed.</p>
+        <div class="acct-row">
+          <button class="btn" id="homeCreate">Create a free account</button>
+          <button class="btn ghost" id="homeSignin">Sign in</button>
+        </div>
+      </div>
+      <div class="home-acct" id="homeIn" hidden>
+        <p>You're signed in. Your shelf follows you to every device.</p>
+        <div class="acct-row"><button class="btn ghost" id="homeAcct">Your account</button></div>
+      </div>
     </div>
   </section>
 

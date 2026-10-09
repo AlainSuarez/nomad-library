@@ -34,7 +34,7 @@ function save() {
       .catch(() => {});
   }, 1200);
 }
-const synced = () => ({ lib: S.lib, libName: S.libName, fmt: S.fmt, faves: S.faves, watch: S.watch });
+const synced = () => ({ ...(S.demo ? {} : { lib: S.lib, libName: S.libName }), fmt: S.fmt, faves: S.faves, watch: S.watch });
 
 function toast(msg) {
   const t = document.createElement("div");
@@ -375,13 +375,15 @@ const passkeysOK = () => !!(window.PublicKeyCredential && WA);
 async function refreshMe() {
   try { me = await api("/api/me"); } catch { me = { uid: null }; }
   $("#acctBtn").textContent = me.uid ? "Account" : "Sign in";
+  $("#homeOut").hidden = !!me.uid; $("#homeIn").hidden = !me.uid;
   return me;
 }
 
 function mergeIn(data) {
   if (!data) return;
   S.faves = { ...(data.faves || {}), ...S.faves };
-  if (!S.lib && data.lib) { S.lib = data.lib; S.libName = data.libName; }
+  // Your account's library wins over whatever this device was last browsing.
+  if (data.lib) { S.lib = data.lib; S.libName = data.libName; S.demo = false; }
   if (!S.watch && data.watch) S.watch = data.watch;
   if (data.fmt && !store.get().fmt) S.fmt = data.fmt;
 }
@@ -391,9 +393,43 @@ async function afterSignIn(extra) {
   mergeIn(me.data);
   save();
   if (extra?.code) return showCode(extra.code, true);
+  if (!me.data?.lib) return libraryStep();
   $("#account").close();
   toast("Signed in. Your shelf is saved.");
   boot();
+}
+
+// Right after signup (or a sign-in with no library yet): pick your own library.
+function libraryStep() {
+  const mine = S.lib && !S.demo;
+  acctView(`<h2>Now, let's set up your library</h2>
+    <p>Paste the link to your public library's catalog. Your account opens to it from now on, on every device.</p>
+    ${mine ? `<button class="btn" id="keepLib" style="width:100%;margin-bottom:14px">Use ${esc(S.libName)}</button><div class="divider">or pick another</div>` : ""}
+    <form id="libStepForm" class="pick-form">
+      <label for="libStepIn">Your library's catalog link</label>
+      <div class="row">
+        <input id="libStepIn" type="text" inputmode="url" autocomplete="off" placeholder="yourlibrary.bibliocommons.com">
+        <button type="submit">Save</button>
+      </div>
+      <p class="err" id="acctErr" role="alert"></p>
+    </form>
+    <details class="how">
+      <summary>Where do I find that?</summary>
+      <p>Go to your library's website and click Catalog or Search. If the address bar shows <b>something.bibliocommons.com</b>, copy that whole link and paste it here.</p>
+    </details>
+    <button class="link small-print" id="skipLib">I'll do this later</button>`);
+  if (!$("#account").open) $("#account").showModal();
+  const done = () => { save(); $("#account").close(); toast(`Your library is ${S.libName}.`); boot(); };
+  if (mine) $("#keepLib").onclick = done;
+  $("#libStepForm").onsubmit = async e => {
+    e.preventDefault();
+    try {
+      const info = await api("/api/library?q=" + encodeURIComponent($("#libStepIn").value));
+      S.lib = info.slug; S.libName = info.name; S.demo = false; S.shelf = "all"; S.sort = "";
+      done();
+    } catch (err) { $("#acctErr").textContent = err.message; }
+  };
+  $("#skipLib").onclick = () => { $("#account").close(); showHome(); };
 }
 
 async function passkeyCreate() {
@@ -447,7 +483,10 @@ function showCode(code, fresh) {
       <button class="btn" id="savedCode">I saved it</button>
     </div>`);
   $("#copyCode").onclick = () => navigator.clipboard?.writeText(code).then(() => toast("Copied"));
-  $("#savedCode").onclick = () => { $("#account").close(); boot(); };
+  $("#savedCode").onclick = () => {
+    if (fresh) return libraryStep();
+    $("#account").close(); boot();
+  };
 }
 
 function codeForm() {
@@ -500,11 +539,11 @@ function paintControls() {
   $("#onShelf").checked = !!S.onShelf;
 }
 
-async function chooseLibrary(q) {
+async function chooseLibrary(q, demo = false) {
   $("#pickErr").textContent = "";
   try {
     const info = await api("/api/library?q=" + encodeURIComponent(q));
-    S.lib = info.slug; S.libName = info.name; S.shelf = "all"; S.sort = "";
+    S.lib = info.slug; S.libName = info.name; S.demo = demo; S.shelf = "all"; S.sort = "";
     save(); boot();
   } catch (e) { $("#pickErr").textContent = e.message; }
 }
@@ -536,12 +575,14 @@ $("#searchForm").onsubmit = e => { e.preventDefault(); $("#q").blur(); paintCont
 $("#q").addEventListener("search", () => { if (!$("#q").value) { paintControls(); reload(); } });
 document.querySelector(".tabs").onclick = e => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); };
 $("#pickForm").onsubmit = e => { e.preventDefault(); chooseLibrary($("#pickInput").value); };
-document.querySelector(".quick").onclick = e => { const b = e.target.closest("button"); if (b) chooseLibrary(b.dataset.lib); };
+document.querySelector(".quick").onclick = e => { const b = e.target.closest("button"); if (b) chooseLibrary(b.dataset.lib, true); };
 $("#libBtn").onclick = () => { showHome(); $("#pickInput").focus(); };
 $("#home").onclick = e => { e.preventDefault(); showHome(); };
 $("#resume").onclick = () => boot();
 $("#acctBtn").onclick = openAccount;
-$("#pickSignin").onclick = openAccount;
+$("#homeCreate").onclick = () => { openAccount(); $("#mkKey")?.click(); };
+$("#homeSignin").onclick = openAccount;
+$("#homeAcct").onclick = openAccount;
 document.addEventListener("click", e => {
   const o = e.target.closest("[data-open]"); if (o) { const r = rowsById.get(o.dataset.open); if (r) openDetail(r); return; }
   const f = e.target.closest("[data-fav]"); if (f) { toggleFav(f.dataset.fav); return; }

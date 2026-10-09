@@ -156,3 +156,8 @@ select { padding: 8px 10px; border: 1.5px solid var(--rule); border-radius: var(
 .libname { flex-shrink: 1; min-width: 0; }
 @media (max-width: 400px) { .libname { max-width: 24vw; } .navlink { padding: 7px 4px; } }
 .hero-card .quick button { background: var(--paper); }
+.home-acct { border-top: 1px solid var(--rule); margin-top: 20px; padding-top: 18px; }
+.home-acct p { margin: 0 0 12px; color: var(--ink-2); font-size: 14px; }
+.acct-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.acct-row .btn { flex: 1 1 auto; }
+#skipLib { display: block; margin: 4px auto 0; }

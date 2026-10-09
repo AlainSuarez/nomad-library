@@ -68,7 +68,11 @@ function shard(k) {
 function pick(c, { disc, tv, year }) {
   if (!c?.length) return null;
   if (year) { const e = c.filter(r => Math.abs(r[3] - year) <= 1); if (e.length) c = e; }
-  else if (disc) { const ok = c.filter(r => !r[3] || r[3] <= disc + 1); if (ok.length) c = ok; }
+  else if (disc) {
+    const ok = c.filter(r => !r[3] || r[3] <= disc + 1); if (ok.length) c = ok;
+    const recent = c.filter(r => r[3] && disc - r[3] <= 2 && r[2] >= c[0][2] * 0.15);
+    if (recent.length) c = recent;
+  }
   const typed = c.filter(r => r[4] === (tv ? "s" : "m"));
   if (typed.length && typed[0][2] >= c[0][2] * 0.2) c = typed;
   const r = c[0];

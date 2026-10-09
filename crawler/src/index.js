@@ -37,7 +37,12 @@ const EDITION = /edition|widescreen|full ?screen|collector|anniversary|season|se
 
 function pick(c, disc, tv) {
   if (!c?.length) return null;
-  if (disc) { const ok = c.filter(r => !r[3] || r[3] <= disc + 1); if (ok.length) c = ok; }
+  if (disc) {
+    const ok = c.filter(r => !r[3] || r[3] <= disc + 1); if (ok.length) c = ok;
+    // a new disc of a same-named film is usually the new film (Supernova 2020, not 2000)
+    const recent = c.filter(r => r[3] && disc - r[3] <= 2 && r[2] >= c[0][2] * 0.15);
+    if (recent.length) c = recent;
+  }
   const typed = c.filter(r => r[4] === (tv ? "s" : "m"));
   if (typed.length && typed[0][2] >= c[0][2] * 0.2) c = typed;
   return c[0];

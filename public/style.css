@@ -223,3 +223,21 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .nope p b { color: var(--ink); }
 .nope ul { padding-left: 18px; margin: 8px 0; }
 .filt-body .stack { position: sticky; bottom: -22px; background: var(--paper); padding: 12px 0 16px; margin-bottom: -16px; border-top: 1px solid var(--rule); }
+/* phones: iOS zooms into any text box under 16px and stays zoomed, so every field is 16px.
+   The layout is pinned to the screen width so nothing can push it sideways. */
+input, select, textarea { font-size: 16px; }
+html, body { max-width: 100%; overflow-x: hidden; }
+.pick { grid-template-columns: minmax(0, 1fr); }
+.hero-copy, .hero-card, .pick-form, .row { min-width: 0; }
+img { max-width: 100%; }
+@media (min-width: 900px) { .pick { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .pick { margin: 24px auto 32px; gap: 22px; }
+  .pick-logo { display: none; }
+  .pick h1 { font-size: 30px; margin: 0 0 10px; }
+  .lede { font-size: 16px; }
+  .hero-card { padding: 18px; }
+  .row button { padding: 12px 16px; }
+  .acct-row .btn { flex: 1 1 100%; }
+  .card-links { font-size: 14px; }
+}

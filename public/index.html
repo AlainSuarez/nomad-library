@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nomad Library</title>
+<meta name="description" content="Every movie at your public library, on one shelf you can actually browse. Ratings, trailers, favorites and your watchlist. Free.">
+<meta name="theme-color" content="#F2E7CD" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10232B" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/fav-64.png" sizes="64x64">
+<link rel="apple-touch-icon" href="/icons/apple-touch.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Nomad Library">
+<meta property="og:title" content="Nomad Library">
+<meta property="og:description" content="Every movie at your public library, on one shelf you can actually browse.">
+<meta property="og:image" content="/icons/icon-512.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/" id="home" aria-label="Nomad Library home">
+    <img src="/icons/fav-64.png" alt="" width="32" height="32">
+    <span>Nomad Library</span>
+  </a>
+  <nav class="nav">
+    <button class="libname" id="libBtn" hidden></button>
+    <a class="navlink" href="https://www.youtube.com/@NomadOverNormal" target="_blank" rel="noopener">YouTube</a>
+    <a class="navlink" id="donateNav" href="https://venmo.com/u/chrisgpresents" target="_blank" rel="noopener">Donate</a>
+    <button class="acct" id="acctBtn">Sign in</button>
+  </nav>
+</header>
+
+<main>
+  <!-- first run: pick a library -->
+  <section id="pick" class="pick" hidden>
+    <img src="/icons/icon-192.png" alt="" width="96" height="96" class="pick-logo">
+    <h1>Your library's movies, all on one shelf.</h1>
+    <p class="lede">Browse every DVD and Blu-ray at your public library with ratings, trailers and what's on the shelf right now. It's free, and so is borrowing them.</p>
+    <form id="pickForm" class="pick-form">
+      <label for="pickInput">Paste your library's catalog link</label>
+      <div class="row">
+        <input id="pickInput" type="text" inputmode="url" autocomplete="off" placeholder="yourlibrary.bibliocommons.com">
+        <button type="submit">Open</button>
+      </div>
+      <p class="err" id="pickErr" role="alert"></p>
+    </form>
+    <details class="how">
+      <summary>Where do I find that?</summary>
+      <p>Go to your library's website and click Catalog or Search. If the address bar shows <b>something.bibliocommons.com</b>, copy that whole link and paste it here. If it doesn't, your library uses different software and isn't supported yet.</p>
+    </details>
+    <div class="quick">
+      <span>Or try one</span>
+      <button data-lib="nypl">New York</button>
+      <button data-lib="chipublib">Chicago</button>
+      <button data-lib="seattle">Seattle</button>
+    </div>
+    <p class="have-acct">Already have an account? <button class="link" id="pickSignin">Sign in</button></p>
+  </section>
+
+  <!-- the shelf -->
+  <section id="shelf" hidden>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="browse" aria-selected="true">Browse</button>
+      <button role="tab" data-tab="faves">Favorites <span id="favCount"></span></button>
+      <button role="tab" data-tab="watch">Watchlist <span id="wlCount"></span></button>
+    </nav>
+
+    <div id="browse">
+      <form class="search" id="searchForm" role="search">
+        <input id="q" type="search" placeholder="Search titles, directors, studios" autocomplete="off">
+      </form>
+      <div class="controls">
+        <div class="seg" id="fmt">
+          <button data-fmt="all">Both</button><button data-fmt="br">Blu-ray</button><button data-fmt="dvd">DVD</button>
+        </div>
+        <select id="sort" aria-label="Sort">
+          <option value="">Library order</option>
+          <option value="top">Top rated on IMDb</option>
+          <option value="new">Newest arrivals</option>
+          <option value="title">A to Z</option>
+        </select>
+        <label class="toggle"><input type="checkbox" id="onShelf"> On the shelf now</label>
+      </div>
+      <div class="chips" id="chips"></div>
+      <p class="status" id="status"></p>
+      <div class="grid" id="grid"></div>
+      <div id="more" class="more"></div>
+    </div>
+
+    <div id="faves" hidden>
+      <p class="status" id="favStatus"></p>
+      <div class="grid" id="favGrid"></div>
+    </div>
+
+    <div id="watch" hidden>
+      <div class="wl-import">
+        <h2>Bring your watchlist</h2>
+        <p>Export your watchlist from IMDb or Letterboxd, drop the file here, and see which of those movies your library has.</p>
+        <label class="drop" id="drop">
+          <input type="file" id="wlFile" accept=".csv,text/csv" hidden>
+          <span>Choose your watchlist file</span>
+        </label>
+        <details class="how">
+          <summary>How do I export it?</summary>
+          <p><b>IMDb:</b> open your Watchlist, tap the three dots, then Export. The file arrives in your Exports page.</p>
+          <p><b>Letterboxd:</b> Settings, then Data, then Export your data. Unzip it and use <b>watchlist.csv</b>.</p>
+        </details>
+      </div>
+      <p class="status" id="wlStatus"></p>
+      <div class="grid" id="wlGrid"></div>
+      <div id="wlMissing" class="missing"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <p><a id="donate" href="https://venmo.com/u/chrisgpresents" target="_blank" rel="noopener">Keep Nomad Library free: tip on Venmo @chrisgpresents</a></p>
+  <p>Made by <a href="https://www.youtube.com/@NomadOverNormal" target="_blank" rel="noopener">Nomad Over Normal</a>. Not affiliated with any library or BiblioCommons. Ratings from IMDb's public datasets.</p>
+</footer>
+
+<!-- movie detail -->
+<dialog id="detail" class="sheet"><div id="detailBody"></div></dialog>
+
+<!-- account -->
+<dialog id="account" class="sheet small"><div id="acctBody"></div></dialog>
+
+<script src="/vendor/swa-browser.js"></script>
+<script src="/app.js" type="module"></script>
+</body>
+</html>

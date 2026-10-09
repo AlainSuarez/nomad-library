@@ -1,0 +1,9 @@
+name = "nomad-library"
+pages_build_output_dir = "public"
+compatibility_date = "2026-09-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nomad-library"
+database_id = "f9893ded-9cfe-4f4d-855f-8e37818eaf90"

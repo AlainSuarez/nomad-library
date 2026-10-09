@@ -1,0 +1,5 @@
+Saved three image-generated concepts as 1024×1024 PNGs:
+
+- [icon_a.png](/Users/chrisgiuseppini/nomad-library/brand/icon_a.png) — disc + book spine
+- [icon_b.png](/Users/chrisgiuseppini/nomad-library/brand/icon_b.png) — disc + library card
+- [icon_c.png](/Users/chrisgiuseppini/nomad-library/brand/icon_c.png) — disc + compass

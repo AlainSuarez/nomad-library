@@ -189,3 +189,6 @@ select { padding: 8px 10px; border: 1.5px solid var(--rule); border-radius: var(
 .steps li { margin: 0 0 10px; line-height: 1.55; }
 .ico { width: 20px; height: 20px; vertical-align: -4px; display: inline-block; }
 .hs-tabs { margin: 4px 0 2px; }
+.foot .credit a { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--ink); text-decoration: none; font-size: 15px; }
+.foot .credit a:hover { text-decoration: underline; }
+.foot .yt { width: 28px; height: 20px; flex: none; }

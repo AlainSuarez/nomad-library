@@ -11,7 +11,7 @@ import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
 } from "@simplewebauthn/server";
-import { json, sign, verify, cookie, setCookie, currentUser, sha256, randomId, b64u } from "../../../lib/core.js";
+import { json, sign, verify, cookie, setCookie, liveUser, sha256, randomId, b64u } from "../../../lib/core.js";
 
 const YEAR = 60 * 60 * 24 * 365;
 const CODE_ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -46,7 +46,7 @@ export async function onRequestPost(ctx) {
   const url = new URL(request.url);
   const rpID = url.hostname, origin = url.origin;
   const body = await request.json().catch(() => ({}));
-  const me = await currentUser(env, request);
+  const me = await liveUser(env, request);
 
   switch (params.action) {
     case "register-options": {

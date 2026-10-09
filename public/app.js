@@ -719,33 +719,37 @@ async function afterSignIn(extra) {
 
 // Right after signup (or a sign-in with no library yet): pick your own library.
 function libraryStep() {
+  if (!LIBS) return loadLibs().then(libraryStep, libraryStep);
   const mine = S.lib && !S.demo;
   acctView(`<h2>Now, let's set up your library</h2>
-    <p>Paste the link to your public library's catalog. Your account opens to it from now on, on every device.</p>
+    <p>Find your public library. Your account opens to it from now on, on every device.</p>
     ${mine ? `<p class="small-print" style="margin:0 0 8px">You were just browsing this one:</p><button class="btn" id="keepLib" style="width:100%;margin-bottom:14px">Use ${esc(S.libName)}</button><div class="divider">or pick another</div>` : ""}
     <form id="libStepForm" class="pick-form">
-      <label for="libStepIn">Your library's catalog link</label>
+      <label for="libStepIn">Your library</label>
       <div class="row">
-        <input id="libStepIn" type="text" inputmode="url" autocomplete="off" placeholder="yourlibrary.bibliocommons.com">
+        <input id="libStepIn" type="text" autocomplete="off" list="libNames" placeholder="Name, city or website">
+        <datalist id="libNames">${LIBS ? [...LIBS.values()].map(n => `<option value="${esc(n)}">`).join("") : ""}</datalist>
         <button type="submit">Save</button>
       </div>
       <p class="err" id="acctErr" role="alert"></p>
     </form>
     <details class="how">
       <summary>Where do I find that?</summary>
-      <p>Go to your library's website and click Catalog or Search. If the address bar shows <b>something.bibliocommons.com</b>, copy that whole link and paste it here.</p>
+      <p>Type your library's name and pick it from the list, or type its website (like <b>spl.org</b>) and press Save.</p>
     </details>
     <button class="link small-print" id="skipLib">I'll do this later</button>`);
   if (!$("#account").open) $("#account").showModal();
   const done = () => {
-    save();
+    save(); flushSave();   // the library is what the account is for, so it saves right away
     homeScreenOffer(() => { $("#account").close(); toast(`Your library is ${S.libName}.`); boot(); });
   };
   if (mine) $("#keepLib").onclick = done;
   $("#libStepForm").onsubmit = async e => {
     e.preventDefault();
     try {
-      const info = await api("/api/library?q=" + encodeURIComponent($("#libStepIn").value));
+      const v = $("#libStepIn").value.trim();
+      const byName = LIBS && [...LIBS].find(([, n]) => n.toLowerCase() === v.toLowerCase());
+      const info = await api("/api/library?q=" + encodeURIComponent(byName ? byName[0] : v));
       S.lib = info.slug; S.libName = info.name; S.demo = false; S.shelf = "all"; S.sort = "";
       done();
     } catch (err) { $("#acctErr").textContent = err.message; }

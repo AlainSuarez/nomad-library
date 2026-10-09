@@ -241,3 +241,11 @@ img { max-width: 100%; }
   .acct-row .btn { flex: 1 1 100%; }
   .card-links { font-size: 14px; }
 }
+/* pop-up windows are always light, so they stand out from the page in dark mode */
+.sheet {
+  --paper: #FBF6EA; --card: #F2E7CD; --ink: #162E38; --ink-2: #4A5D63; --rule: #DCCFAE;
+  --stamp: #A8452C; --ok: #2F6B4F; --star: #B07A10;
+  background: var(--paper); color: var(--ink); color-scheme: light;
+}
+.sheet::backdrop { background: rgba(8, 18, 23, .72); }
+@media (max-width: 640px) { .code { font-size: 18px; letter-spacing: .04em; white-space: nowrap; padding: 14px 8px; } }

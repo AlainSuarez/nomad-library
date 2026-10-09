@@ -45,7 +45,23 @@ function pick(c, disc, tv) {
 
 // One compact row per record. The site reads these by position:
 // [id, title, sub, fmt, discYear, cover, onShelf, holds, genres, tv, platform, rating, votes, imdb, filmYear]
-function shape(id, b, f) {
+// Covers are almost always the same Syndetics address with a different ISBN/UPC, so a copy keeps only
+// those numbers ("~isbn~upc~oclc") and the library's Syndetics client id is stored once. Halves the copy.
+function coverOf(url, seen) {
+  if (!url) return "";
+  try {
+    const u = new URL(url);
+    if (u.hostname === "secure.syndetics.com" && u.searchParams.get("type") === "xw12") {
+      const client = u.searchParams.get("client") || "";
+      if (!seen.client) seen.client = client;
+      if (client === seen.client)
+        return "~" + (u.searchParams.get("isbn") || "").replace(/\/[A-Z]+\.(GIF|JPG)$/i, "") + "~" + (u.searchParams.get("upc") || "") + "~" + (u.searchParams.get("oclc") || "");
+    }
+  } catch {}
+  return url;
+}
+
+function shape(id, b, f, seen) {
   const br = b.briefInfo || {}, av = b.availability || {}, j = br.jacket || {};
   const subj = [...(br.subjectHeadings || []), ...(br.genreForm || [])].join(" | ").toLowerCase();
   const genres = [];
@@ -54,7 +70,7 @@ function shape(id, b, f) {
   let plat = "";
   if (f === "g") { const hay = [br.title, br.subtitle, br.edition, br.callNumber].join(" "); for (const [re, p] of PLATFORMS) if (re.test(hay)) { plat = p; break; } }
   return [id, (br.title || "").trim(), (br.subtitle || "").trim(), f, yearOf(br.publicationDate),
-    j.medium || j.large || j.small || "", (av.status === "AVAILABLE" || (av.availableCopies || 0) > 0) ? 1 : 0,
+    coverOf(j.medium || j.large || j.small || "", seen), (av.status === "AVAILABLE" || (av.availableCopies || 0) > 0) ? 1 : 0,
     av.heldCopies || 0, genres.slice(0, 4).join(","), tv, plat, 0, 0, "", 0];
 }
 
@@ -111,7 +127,7 @@ export async function crawl(env) {
   const [fmt, f] = FMTS[bfmt];
   const nums = Array.from({ length: PAGES_PER_RUN }, (_, i) => bpage + i);
   const got = await Promise.allSettled(nums.map(n => page(slug, fmt, n)));
-  const rows = [];
+  const rows = [], seen = { client: job.cover || "" };
   let pages = 0, errs = 0, cnt = 0;
   for (const g of got) {
     if (g.status !== "fulfilled") { errs++; continue; }
@@ -120,13 +136,14 @@ export async function crawl(env) {
     if (pg.count) cnt = pg.count;
     const bibs = d.entities?.bibs || {};
     for (const res of d.catalogSearch?.results || []) {
-      const id = res.representative; if (bibs[id]) rows.push(shape(id, bibs[id], f));
+      const id = res.representative; if (bibs[id]) rows.push(shape(id, bibs[id], f, seen));
     }
   }
   if (errs === nums.length) return { slug, fmt, error: "library didn't answer; retrying next minute" };
   if (bpage === 1) bexpect += cnt;
   await attachRatings(db, rows);
   const stmts = [];
+  if (seen.client && seen.client !== job.cover) stmts.push(db.prepare("UPDATE libs SET cover = ? WHERE slug = ?").bind(seen.client, slug));
   if (rows.length) stmts.push(db.prepare("INSERT OR REPLACE INTO chunks (slug, ver, seq, body) VALUES (?, ?, ?, ?)")
     .bind(slug, bver, bseq, JSON.stringify(rows).slice(1, -1)));
   bseq++; bcount += rows.length;

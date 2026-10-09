@@ -9,7 +9,7 @@ export async function onRequestGet(ctx) {
   const slug = (new URL(request.url).searchParams.get("lib") || "").toLowerCase();
   if (!SLUG_RE.test(slug)) return json({ error: "Pick a library first." }, { status: 400 });
   const now = Date.now();
-  const row = await env.DB.prepare("SELECT slug, ver, total, finished, bver, bcount, bexpect, last_opened FROM libs WHERE slug = ?").bind(slug).first();
+  const row = await env.DB.prepare("SELECT slug, ver, total, finished, bver, bcount, bexpect, last_opened, cover FROM libs WHERE slug = ?").bind(slug).first();
 
   if (!row) {
     const info = await libraryInfo(ctx, slug);
@@ -23,11 +23,11 @@ export async function onRequestGet(ctx) {
     return json({ ver: 0, building: true, done: row.bcount, expect: row.bexpect }, { headers: { "cache-control": "no-store" } });
 
   // The copy only changes once a week, so it's kept at the edge until the next version replaces it.
-  const key = new Request(`https://nomad-library.cache/snap/${slug}/${row.ver}`);
+  const key = new Request(`https://nomad-library.cache/snap2/${slug}/${row.ver}`);
   const hit = await caches.default.match(key);
   if (hit) return new Response(hit.body, { headers: { "content-type": "application/json", "cache-control": "private, max-age=600", "x-snap": "edge" } });
   const { results } = await env.DB.prepare("SELECT body FROM chunks WHERE slug = ? AND ver = ? ORDER BY seq").bind(slug, row.ver).all();
-  const body = `{"ver":${row.ver},"finished":${row.finished},"total":${row.total},"rows":[${results.map(r => r.body).join(",")}]}`;
+  const body = `{"ver":${row.ver},"finished":${row.finished},"total":${row.total},"sc":${JSON.stringify(row.cover || "")},"rows":[${results.map(r => r.body).join(",")}]}`;
   ctx.waitUntil(caches.default.put(key, new Response(body, {
     headers: { "content-type": "application/json", "cache-control": "public, max-age=604800" },
   })));

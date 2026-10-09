@@ -338,9 +338,14 @@ let SNAP = null, snapList = [], snapShown = 0, liveQ = false;
 
 // Row layout from the crawler:
 // [id, title, sub, fmt, discYear, cover, onShelf, holds, genres, tv, platform, rating, votes, imdb, filmYear]
-function fromRow(x, lib) {
+const coverUrl = (c, sc) => {
+  if (!c || c[0] !== "~") return c || null;
+  const [, isbn, upc, oclc] = c.split("~");
+  return `https://secure.syndetics.com/index.aspx?isbn=${isbn}/MC.GIF&client=${encodeURIComponent(sc)}&type=xw12&oclc=${oclc}&upc=${upc}`;
+};
+function fromRow(x, lib, sc) {
   return {
-    id: x[0], title: x[1], sub: x[2], f: x[3], fmt: FMT_NAME[x[3]], disc: x[4] || null, img: x[5] || null,
+    id: x[0], title: x[1], sub: x[2], f: x[3], fmt: FMT_NAME[x[3]], disc: x[4] || null, img: coverUrl(x[5], sc),
     avail: !!x[6], holds: x[7], genres: x[8] ? x[8].split(",") : [], tv: !!x[9], plat: x[10],
     r: x[11] || 0, v: x[12] || 0, imdb: x[13] || null, fy: x[14] || null,
     url: `https://${lib}.bibliocommons.com/v2/record/${x[0]}`, n: +String(x[0]).replace(/\D+/g, "").slice(-9) || 0,
@@ -364,7 +369,7 @@ async function fetchSnap(lib) {
     if (!d.ver) return (SNAP = { lib, building: true, done: d.done, expect: d.expect });
     const films = [], games = [], seenF = new Map();
     for (const x of d.rows) {
-      const r = fromRow(x, lib);
+      const r = fromRow(x, lib, d.sc);
       rowsById.set(r.id, r);
       if (r.f === "g") games.push(r); else films.push(r);
     }

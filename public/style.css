@@ -173,7 +173,8 @@ select { padding: 8px 10px; border: 1.5px solid var(--rule); border-radius: var(
 .doc .summary { background: var(--card); border: 1px solid var(--rule); border-radius: var(--r); padding: 18px 20px; }
 .doc .summary ul { margin: 6px 0 0; }
 /* keyboard focus you can actually see */
-:focus-visible { outline: 2.5px solid var(--stamp); outline-offset: 2px; }
+:focus-visible { outline: 2.5px solid var(--ink); outline-offset: 2px; }
+input:focus-visible, select:focus-visible { outline-offset: 0; }
 .skip { position: absolute; left: -9999px; top: 8px; background: var(--ink); color: var(--paper); padding: 8px 12px; border-radius: var(--r); z-index: 30; }
 .skip:focus { left: 8px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
@@ -211,3 +212,14 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .dim { color: var(--ink-2); }
 #filters .sheet, #filters { max-height: calc(100vh - 32px); overflow: auto; }
 .ttl .tsub { display: block; font-weight: 400; font-size: 12px; color: var(--ink-2); }
+/* library search */
+.pick-form { position: relative; }
+.suggest { list-style: none; margin: 4px 0 0; padding: 4px; position: absolute; left: 0; right: 0; z-index: 10; background: var(--paper); border: 1.5px solid var(--ink); border-radius: var(--r); box-shadow: var(--shadow); max-height: 280px; overflow: auto; }
+.suggest li { padding: 10px 12px; border-radius: var(--r); cursor: pointer; font-size: 15px; }
+.suggest li small { display: block; color: var(--ink-2); font-size: 12px; }
+.suggest li[aria-selected="true"], .suggest li:hover { background: var(--card); }
+.nope { background: var(--paper); border: 1px solid var(--rule); border-radius: var(--r); padding: 14px 16px; margin: 6px 0 12px; font-size: 14px; }
+.nope p, .nope li { color: var(--ink-2); line-height: 1.55; }
+.nope p b { color: var(--ink); }
+.nope ul { padding-left: 18px; margin: 8px 0; }
+.filt-body .stack { position: sticky; bottom: -22px; background: var(--paper); padding: 12px 0 16px; margin-bottom: -16px; border-top: 1px solid var(--rule); }

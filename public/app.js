@@ -98,14 +98,18 @@ async function rate(rows) {
 
 // ---- api ----------------------------------------------------------------------
 
+const BUSY = "Nomad Library is extra busy right now. Please try again in a little while.";
 async function api(path, opts) {
-  const r = await fetch(path, opts);
-  const d = await r.json().catch(() => ({}));
+  let r;
+  try { r = await fetch(path, opts); }
+  catch { throw Object.assign(new Error("You seem to be offline. Check your connection and try again."), { data: {} }); }
+  const d = await r.json().catch(() => null);
+  if (!d) throw Object.assign(new Error(r.status >= 500 || r.status === 429 ? BUSY : "Something went wrong. Try again."), { data: {}, status: r.status });
   if (!r.ok) {
     // A passkey whose account is gone: ask the device to forget it, where browsers support that.
     if (d.unknown && window.PublicKeyCredential?.signalUnknownCredential)
       PublicKeyCredential.signalUnknownCredential({ rpId: d.rpID, credentialId: d.unknown }).catch(() => {});
-    throw new Error(d.error || "Something went wrong. Try again.");
+    throw Object.assign(new Error(d.error || "Something went wrong. Try again."), { data: d, status: r.status });
   }
   return d;
 }
@@ -847,16 +851,85 @@ function paintControls() {
   $("#sort").value = S.sort;
 }
 
+// ---- find your library: a list we keep growing, matched as you type ---------------
+
+let LIBS = null;
+async function loadLibs() {
+  if (LIBS) return LIBS;
+  LIBS = new Map();
+  const [a, b] = await Promise.all([
+    fetch("/libraries.json").then(r => r.json()).catch(() => []),
+    api("/api/libs").catch(() => []),
+  ]);
+  for (const x of a) LIBS.set(x.slug, x.name);
+  for (const [slug, name] of b) LIBS.set(slug, name);
+  return LIBS;
+}
+const fold = t => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, " ");
+let sugg = [], suggAt = -1;
+function suggest() {
+  const q = fold($("#pickInput").value).trim();
+  const box = $("#libList");
+  $("#nope").hidden = true;
+  if (!q || !LIBS || /[./]/.test($("#pickInput").value)) { box.hidden = true; $("#pickInput").setAttribute("aria-expanded", "false"); sugg = []; return; }
+  const words = q.split(/\s+/);
+  sugg = [...LIBS].filter(([slug, name]) => { const t = fold(name) + " " + slug; return words.every(w => t.includes(w)); })
+    .sort((a, b) => a[1].length - b[1].length).slice(0, 8);
+  suggAt = sugg.length ? 0 : -1;
+  box.innerHTML = sugg.length
+    ? sugg.map(([slug, name], i) => `<li role="option" id="lib-${i}" data-slug="${esc(slug)}" aria-selected="${i === suggAt}">${esc(name)}<small>${esc(slug)}.bibliocommons.com</small></li>`).join("")
+    : `<li class="none">No match yet. Try your library's website, like <b>spl.org</b>, and press Open.</li>`;
+  box.hidden = false; $("#pickInput").setAttribute("aria-expanded", "true");
+}
+function moveSugg(d) {
+  if (!sugg.length) return;
+  suggAt = (suggAt + d + sugg.length) % sugg.length;
+  document.querySelectorAll("#libList li[data-slug]").forEach((li, i) => li.setAttribute("aria-selected", i === suggAt));
+  $("#pickInput").setAttribute("aria-activedescendant", "lib-" + suggAt);
+}
+$("#pickInput").addEventListener("focus", () => loadLibs().then(suggest));
+$("#pickInput").addEventListener("input", () => { $("#pickErr").textContent = ""; loadLibs().then(suggest); });
+$("#pickInput").addEventListener("keydown", e => {
+  if (e.key === "ArrowDown") { e.preventDefault(); moveSugg(1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); moveSugg(-1); }
+  else if (e.key === "Escape") { $("#libList").hidden = true; }
+});
+$("#libList").addEventListener("mousedown", e => { const li = e.target.closest("li[data-slug]"); if (li) { e.preventDefault(); $("#libList").hidden = true; chooseLibrary(li.dataset.slug); } });
+document.addEventListener("click", e => { if (!e.target.closest("#pickForm")) $("#libList").hidden = true; });
+
 async function chooseLibrary(q, demo = false) {
-  $("#pickErr").textContent = "";
+  $("#pickErr").textContent = ""; $("#nope").hidden = true; $("#libList").hidden = true;
   try {
     const info = await api("/api/library?q=" + encodeURIComponent(q));
     S.lib = info.slug; S.libName = info.name; S.demo = demo; S.shelf = "all"; S.sort = ""; clearFilter("all"); S.fmt = "all";
     save(); boot();
-  } catch (e) { $("#pickErr").textContent = e.message; }
+  } catch (e) {
+    if (e.data?.unsupported) $("#nope").hidden = false;
+    else $("#pickErr").textContent = e.message;
+  }
 }
 
-function showHome() {
+// ---- back button -------------------------------------------------------------------
+
+let popClosing = false;
+for (const d of document.querySelectorAll("dialog")) {
+  d.showModal = function () {
+    if (this.open) return;
+    HTMLDialogElement.prototype.showModal.call(this);
+    history.pushState({ nl: "dialog" }, "");
+  };
+  d.addEventListener("close", () => { if (!popClosing && history.state?.nl === "dialog") history.back(); });
+}
+addEventListener("popstate", () => {
+  const open = [...document.querySelectorAll("dialog")].find(d => d.open);
+  if (open) { popClosing = true; open.close(); popClosing = false; return; }
+  if (history.state?.nl === "dialog") return history.back();
+  if (!$("#shelf").hidden && history.state?.nl !== "shelf") showHome(true);
+  else if ($("#shelf").hidden && history.state?.nl === "shelf" && S.lib) boot(true);
+});
+
+function showHome(fromPop) {
+  if (!fromPop && history.state?.nl === "shelf") history.replaceState({ nl: "home" }, "", "/");
   $("#pick").hidden = false; $("#shelf").hidden = true;
   $("#libBtn").hidden = true;   // the home page has its own "Back to" button
   if (S.lib) loadSnap();
@@ -866,7 +939,8 @@ function showHome() {
   window.scrollTo(0, 0);
 }
 
-function boot() {
+function boot(fromPop) {
+  if (S.lib && !fromPop && history.state?.nl !== "shelf") history.pushState({ nl: "shelf" }, "", "/?lib=" + encodeURIComponent(S.lib));
   counts();
   if (!S.lib) { showHome(); $("#libBtn").hidden = true; return; }
   $("#pick").hidden = true; $("#shelf").hidden = false;
@@ -881,7 +955,14 @@ let typing;
 $("#q").addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(() => { liveQ = false; if (instant() || SNAP?.ver) reload(); }, 180); });
 $("#q").addEventListener("search", () => { if (!$("#q").value) { liveQ = false; reload(); } });
 document.querySelector(".tabs").onclick = e => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); };
-$("#pickForm").onsubmit = e => { e.preventDefault(); chooseLibrary($("#pickInput").value); };
+$("#pickForm").onsubmit = e => {
+  e.preventDefault();
+  const v = $("#pickInput").value.trim();
+  if (!v) return;
+  if (sugg.length && suggAt >= 0 && !$("#libList").hidden && !/[./]/.test(v)) return chooseLibrary(sugg[suggAt][0]);
+  chooseLibrary(v);
+};
+$("#nopeSeattle").onclick = () => chooseLibrary("seattle", true);
 $("#trySeattle").onclick = () => chooseLibrary("seattle", true);
 $("#howBtn").onclick = () => { $("#howText").hidden = !$("#howText").hidden; };
 $("#libBtn").onclick = () => { showHome(); $("#pickInput").focus(); };
@@ -909,10 +990,16 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").cat
 
 // The shelf starts loading right away. The account check runs alongside it.
 // Every visit opens on the home page. A saved library gets a one-tap "Back to" button there.
-showHome();
+const linked = new URLSearchParams(location.search).get("lib");
+history.replaceState({ nl: "home" }, "", "/");
+if (linked) chooseLibrary(linked, linked !== S.lib || !!S.demo);
+else showHome();
 counts();
 refreshMe().then(() => {
   if (!me.uid) return;
-  mergeIn(me.data); store.set(S);
+  const keep = linked ? { lib: S.lib, libName: S.libName, demo: S.demo } : null;
+  mergeIn(me.data);
+  if (keep?.lib) Object.assign(S, keep);   // a shared link wins for this visit
+  store.set(S);
   if ($("#pick").hidden) counts(); else showHome();
   });

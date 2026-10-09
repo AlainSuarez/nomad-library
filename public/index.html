@@ -15,7 +15,11 @@
 <meta name="apple-mobile-web-app-title" content="Nomad Library">
 <meta property="og:title" content="Nomad Library">
 <meta property="og:description" content="Every movie at your public library, on one shelf you can actually browse.">
-<meta property="og:image" content="/icons/icon-512.png">
+<meta property="og:image" content="https://library.nomadovernormal.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://library.nomadovernormal.com/">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://secure.syndetics.com">
 <link rel="preload" href="/fonts/poppins-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/fonts.css">
@@ -46,19 +50,29 @@
     </div>
     <div class="hero-card">
       <button class="btn resume" id="resume" hidden></button>
-      <form id="pickForm" class="pick-form">
-        <label for="pickInput">Paste your library's catalog link</label>
+      <form id="pickForm" class="pick-form" autocomplete="off">
+        <label for="pickInput">Find your library</label>
         <div class="row">
-          <input id="pickInput" type="text" inputmode="url" autocomplete="off" placeholder="yourlibrary.bibliocommons.com">
+          <input id="pickInput" type="text" autocomplete="off" placeholder="Library name, city or website" role="combobox" aria-expanded="false" aria-controls="libList" aria-autocomplete="list">
           <button type="submit">Open</button>
         </div>
+        <ul class="suggest" id="libList" role="listbox" hidden></ul>
         <p class="err" id="pickErr" role="alert" aria-live="polite"></p>
       </form>
+      <div class="nope" id="nope" hidden>
+        <p><b>That library isn't supported yet.</b> Nomad Library works with libraries whose catalog runs on BiblioCommons. Yours probably uses different software. Here's how to get free movies from it anyway:</p>
+        <ul>
+          <li>Search its catalog for "DVD" or "Blu-ray" and sort by newest.</li>
+          <li>Check its digital apps. Kanopy and Hoopla stream movies free with a library card, and Libby has some too.</li>
+          <li>Ask about interlibrary loan. Most libraries can borrow a movie from another library for you.</li>
+        </ul>
+        <p class="small-print">Want to see how it works? <button class="link" type="button" id="nopeSeattle">Try Seattle's library</button></p>
+      </div>
       <div class="card-links">
-        <button class="link" type="button" id="howBtn">Where do I find that?</button>
+        <button class="link" type="button" id="howBtn">Can't find it?</button>
         <button class="link" type="button" id="trySeattle">Or try Seattle's</button>
       </div>
-      <p class="how-text" id="howText" hidden>On your library's website, open the catalog. If the address shows <b>something.bibliocommons.com</b>, paste that link here.</p>
+      <p class="how-text" id="howText" hidden>Type your library's website (like <b>spl.org</b>) and press Open, or paste the link from its online catalog. If that catalog's address has <b>bibliocommons.com</b> in it, Nomad Library can open it.</p>
       <div class="acct-row home-acct" id="homeOut">
         <button class="btn" id="homeCreate">Create a free account</button>
         <button class="btn ghost" id="homeSignin">Sign in</button>

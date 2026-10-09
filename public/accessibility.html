@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Accessibility · Nomad Library</title>
+<meta name="description" content="How Nomad Library works with screen readers, keyboards and other tools.">
+<meta name="theme-color" content="#F2E7CD" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10232B" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/icons/fav-64.png" sizes="64x64">
+<link rel="apple-touch-icon" href="/icons/apple-touch.png">
+<link rel="preload" href="/fonts/poppins-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/fonts.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <a class="brand" href="/" aria-label="Nomad Library home">
+    <img src="/icons/fav-64.png" alt="" width="32" height="32">
+    <span>Nomad Library</span>
+  </a>
+  <nav class="nav">
+    <a class="navlink" href="https://www.youtube.com/@NomadOverNormal" target="_blank" rel="noopener">YouTube</a>
+    <a class="navlink" href="https://venmo.com/u/chrisgpresents" target="_blank" rel="noopener">Donate</a>
+  </nav>
+</header>
+<main id="main" class="doc">
+<h1>Accessibility</h1>
+<p class="updated">Last updated October 9, 2026</p>
+
+<p>Nomad Library should work for everyone, including people who use a screen reader, a keyboard, zoom or other assistive tools. The goal is to meet the Web Content Accessibility Guidelines (WCAG) 2.2 at level AA.</p>
+
+<h2>What's built in</h2>
+<ul>
+<li>Everything works with a keyboard, with a visible outline showing where you are, and a Skip to content link.</li>
+<li>Every button and form field has a label a screen reader can announce.</li>
+<li>Each movie's title, year, format and availability are written out as text, not just shown on the cover.</li>
+<li>Text and buttons meet AA color contrast in both light and dark mode, and the site follows your device's light or dark setting.</li>
+<li>Pages reflow on phones and stay usable at 200% zoom.</li>
+<li>Motion is kept to a minimum and turns off if your device asks for reduced motion.</li>
+<li>Signing in uses your device's own face, fingerprint or PIN prompt, which works with your device's accessibility settings. A backup code works for anyone who can't use passkeys.</li>
+</ul>
+
+<h2>Known limits</h2>
+<ul>
+<li>Cover images come from each library and don't include descriptions, so they're skipped by screen readers. The title is always written under every cover.</li>
+<li>Pages we link to, like your library's catalog, YouTube and IMDb, have their own accessibility.</li>
+</ul>
+
+<h2>Tell us what's not working</h2>
+<p>If something on Nomad Library is hard to use, please reach out through the <a href="https://www.youtube.com/@NomadOverNormal/about" target="_blank" rel="noopener">Nomad Over Normal YouTube channel</a> and say what you were trying to do and what device or tool you were using. Accessibility fixes go to the front of the line.</p>
+</main>
+<footer class="foot">
+  <p class="promise">No email. No passwords. No ads. No tracking.</p>
+  <p class="legal"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/accessibility">Accessibility</a><a href="https://venmo.com/u/chrisgpresents" target="_blank" rel="noopener">Tip on Venmo</a></p>
+  <p>Website designed by <a href="https://www.youtube.com/@NomadOverNormal" target="_blank" rel="noopener">Nomad Over Normal</a></p>
+</footer>
+</body>
+</html>

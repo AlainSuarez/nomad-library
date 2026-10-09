@@ -101,7 +101,12 @@ async function rate(rows) {
 async function api(path, opts) {
   const r = await fetch(path, opts);
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || "Something went wrong. Try again.");
+  if (!r.ok) {
+    // A passkey whose account is gone: ask the device to forget it, where browsers support that.
+    if (d.unknown && window.PublicKeyCredential?.signalUnknownCredential)
+      PublicKeyCredential.signalUnknownCredential({ rpId: d.rpID, credentialId: d.unknown }).catch(() => {});
+    throw new Error(d.error || "Something went wrong. Try again.");
+  }
   return d;
 }
 const searchUrl = (page, sort) => {
@@ -575,7 +580,8 @@ $("#searchForm").onsubmit = e => { e.preventDefault(); $("#q").blur(); paintCont
 $("#q").addEventListener("search", () => { if (!$("#q").value) { paintControls(); reload(); } });
 document.querySelector(".tabs").onclick = e => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); };
 $("#pickForm").onsubmit = e => { e.preventDefault(); chooseLibrary($("#pickInput").value); };
-document.querySelector(".quick").onclick = e => { const b = e.target.closest("button"); if (b) chooseLibrary(b.dataset.lib, true); };
+$("#trySeattle").onclick = () => chooseLibrary("seattle", true);
+$("#howBtn").onclick = () => { $("#howText").hidden = !$("#howText").hidden; };
 $("#libBtn").onclick = () => { showHome(); $("#pickInput").focus(); };
 $("#home").onclick = e => { e.preventDefault(); showHome(); };
 $("#resume").onclick = () => boot();

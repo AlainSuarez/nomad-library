@@ -16,9 +16,8 @@
 <meta property="og:description" content="Every movie at your public library, on one shelf you can actually browse.">
 <meta property="og:image" content="/icons/icon-512.png">
 <link rel="preconnect" href="https://secure.syndetics.com">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/poppins-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/fonts.css">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -52,26 +51,19 @@
           <input id="pickInput" type="text" inputmode="url" autocomplete="off" placeholder="yourlibrary.bibliocommons.com">
           <button type="submit">Open</button>
         </div>
-        <p class="err" id="pickErr" role="alert"></p>
+        <p class="err" id="pickErr" role="alert" aria-live="polite"></p>
       </form>
-      <details class="how">
-        <summary>Where do I find that?</summary>
-        <p>Go to your library's website and click Catalog or Search. If the address bar shows <b>something.bibliocommons.com</b>, copy that whole link and paste it here. If it doesn't, your library uses different software and isn't supported yet.</p>
-      </details>
-      <div class="quick">
-        <span>Just looking?</span>
-        <button data-lib="seattle">Try Seattle's library</button>
+      <div class="card-links">
+        <button class="link" type="button" id="howBtn">Where do I find that?</button>
+        <button class="link" type="button" id="trySeattle">Or try Seattle's</button>
       </div>
-      <div class="home-acct" id="homeOut">
-        <p>Save your library, favorites and watchlist on every device. No email or password needed.</p>
-        <div class="acct-row">
-          <button class="btn" id="homeCreate">Create a free account</button>
-          <button class="btn ghost" id="homeSignin">Sign in</button>
-        </div>
+      <p class="how-text" id="howText" hidden>On your library's website, open the catalog. If the address shows <b>something.bibliocommons.com</b>, paste that link here.</p>
+      <div class="acct-row home-acct" id="homeOut">
+        <button class="btn" id="homeCreate">Create a free account</button>
+        <button class="btn ghost" id="homeSignin">Sign in</button>
       </div>
-      <div class="home-acct" id="homeIn" hidden>
-        <p>You're signed in. Your shelf follows you to every device.</p>
-        <div class="acct-row"><button class="btn ghost" id="homeAcct">Your account</button></div>
+      <div class="acct-row home-acct" id="homeIn" hidden>
+        <button class="btn ghost" id="homeAcct">Your account</button>
       </div>
     </div>
   </section>
@@ -133,9 +125,9 @@
 </main>
 
 <footer class="foot">
-  <p><a id="donate" href="https://venmo.com/u/chrisgpresents" target="_blank" rel="noopener">Keep Nomad Library free: tip on Venmo @chrisgpresents</a></p>
+  <p class="promise">No email. No passwords. No ads. No tracking.</p>
+  <p class="legal"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/accessibility">Accessibility</a><a href="https://venmo.com/u/chrisgpresents" target="_blank" rel="noopener">Tip on Venmo</a></p>
   <p>Website designed by <a href="https://www.youtube.com/@NomadOverNormal" target="_blank" rel="noopener">Nomad Over Normal</a></p>
-  <p class="fine">Not affiliated with any library or BiblioCommons. Ratings from IMDb's public datasets.</p>
 </footer>
 
 <!-- movie detail -->

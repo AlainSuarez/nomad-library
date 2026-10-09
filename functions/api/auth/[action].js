@@ -56,7 +56,9 @@ export async function onRequestPost(ctx) {
         : [];
       const opts = await generateRegistrationOptions({
         rpName: "Nomad Library", rpID,
-        userName: "Nomad Library", userDisplayName: "Nomad Library member",
+        // The date tells passkeys apart if a device ever lists more than one.
+        userName: `Nomad Library (${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })})`,
+        userDisplayName: "Nomad Library member",
         userID: new TextEncoder().encode(uid),
         attestationType: "none",
         excludeCredentials: existing.map(c => ({ id: c.id, transports: JSON.parse(c.transports || "[]") })),
@@ -100,7 +102,7 @@ export async function onRequestPost(ctx) {
       if (!st) return json({ error: "That took too long. Try again." }, { status: 400 });
       const id = body.response?.id;
       const row = id && await env.DB.prepare("SELECT * FROM creds WHERE id = ?").bind(id).first();
-      if (!row) return json({ error: "That passkey isn't linked to an account here." }, { status: 400 });
+      if (!row) return json({ error: "That passkey's account no longer exists. Create a new free account, or sign in with your backup code.", unknown: id, rpID }, { status: 400 });
       let v;
       try {
         v = await verifyAuthenticationResponse({

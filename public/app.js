@@ -6,13 +6,6 @@
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-const SHELVES = [
-  ["all", "Everything"], ["new", "New arrivals"], ["mustsee", "1001 must-sees"], ["oscar", "Oscar winners"],
-  ["registry", "Film Registry"], ["criterion", "Criterion"], ["ghibli", "Studio Ghibli"],
-  ["horror", "Horror"], ["comedy", "Comedy"], ["romcom", "Rom-com"], ["scifi", "Sci-fi"], ["action", "Action"],
-  ["suspense", "Suspense"], ["animation", "Animation"], ["family", "Family"], ["documentary", "Documentary"],
-  ["foreign", "Foreign"], ["western", "Western"], ["war", "War"], ["musical", "Musical"], ["tv", "TV shows"],
-];
 const TOP_PAGES = 36;
 
 // ---- state ------------------------------------------------------------------
@@ -21,7 +14,8 @@ const store = {
   get() { try { return JSON.parse(localStorage.getItem("nl") || "{}"); } catch { return {}; } },
   set(v) { try { localStorage.setItem("nl", JSON.stringify(v)); } catch {} },
 };
-let S = Object.assign({ lib: null, libName: "", fmt: "all", shelf: "all", sort: "", onShelf: false, faves: {}, watch: null }, store.get());
+let S = Object.assign({ lib: null, libName: "", fmt: "all", shelf: "all", sort: "", onShelf: false, faves: {}, watch: null,
+  genre: "", coll: "", plat: "", y0: 0, y1: 0, minR: 0 }, store.get());
 let me = { uid: null, passkeys: 0 };
 let saveTimer = null;
 
@@ -133,8 +127,8 @@ function cardHTML(r) {
   return `<div class="card" data-id="${esc(r.id)}">
     <button class="cover" data-open="${esc(r.id)}" aria-label="${esc(r.title)}">${cover}${rating}</button>
     <button class="heart" data-fav="${esc(r.id)}" aria-pressed="${isFav(r)}" aria-label="Favorite">${isFav(r) ? "♥" : "♡"}</button>
-    <div class="ttl">${esc(r.title)}</div>
-    <div class="meta">${esc(filmYear(r))} · ${esc(r.fmts || r.fmt)}</div>
+    <div class="ttl">${esc(r.title)}${r.tv && r.sub ? `<span class="tsub">${esc(r.sub)}</span>` : ""}</div>
+    <div class="meta">${r.f === "g" ? esc(r.plat || r.disc || "") : esc(filmYear(r))} · ${esc(r.fmts || r.fmt)}</div>
     ${av}
   </div>`;
 }
@@ -152,6 +146,7 @@ function absorb(into, r) {
   into.avail = into.eds.some(e => e.avail);
   into.holds = into.eds.reduce((n, e) => n + (e.holds || 0), 0);
   into.fmts = [...new Set(into.eds.map(e => e.fmt))].sort().reverse().join(" + ");
+  into.fs = (into.fs || into.f || "") + (r.f || "");
   if (!into.img && r.img) into.img = r.img;
   rowsById.set(r.id, into);
 }
@@ -178,7 +173,7 @@ function openDetail(r) {
       <div>
         <h2>${esc(r.title)}</h2>
         ${r.sub ? `<p class="sub">${esc(r.sub)}</p>` : ""}
-        <div class="facts">${yearNote} · ${esc(fmtLabel)}${r.r ? ` · <b>★ ${r.r.toFixed(1)}</b> from ${Number(r.v).toLocaleString()} votes` : ""}<br>${av}</div>
+        <div class="facts">${r.f === "g" ? esc(r.plat || "") || yearNote : yearNote} · ${esc(fmtLabel)}${r.r ? ` · <b>★ ${r.r.toFixed(1)}</b> from ${Number(r.v).toLocaleString()} votes` : ""}<br><span id="liveAv">${av}</span></div>
         ${r.desc ? `<p>${esc(r.desc)}</p>` : ""}
         ${r.eds && r.eds.length > 1 ? `<div class="facts">${r.eds.map(e => `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.fmt)}${e.disc ? ` (${e.disc})` : ""}</a>: ${e.avail ? `<b style="color:var(--ok)">${e.copies} in</b>` : `all out${e.holds ? `, ${e.holds} holds` : ""}`}`).join("<br>")}</div>` : ""}
         <div class="actions">
@@ -190,6 +185,25 @@ function openDetail(r) {
       </div>
     </div></div>`;
   $("#detail").showModal();
+  liveStatus(r);
+}
+
+// The weekly copy can't know what's on the shelf right now, so the movie page asks the library.
+async function liveStatus(r) {
+  const eds = r.eds || [r];
+  try {
+    const d = await api(`/api/avail?lib=${encodeURIComponent(S.lib)}&ids=${eds.slice(0, 6).map(e => e.id).join(",")}`);
+    let any = false, copies = 0, total = 0, holds = 0;
+    for (const e of eds) { const a = d[e.id]; if (!a) continue; Object.assign(e, a); any = any || a.avail; copies += a.copies; total += a.total; holds += a.holds; }
+    if (!Object.keys(d).length) return;
+    Object.assign(r, { avail: any, copies, total, holds });
+    if (!$("#detail").open) return;
+    const el = $("#liveAv");
+    if (el) el.innerHTML = any ? `<b style="color:var(--ok)">On the shelf right now</b> · ${copies} of ${total} in`
+      : `<b style="color:var(--stamp)">All checked out right now</b>${holds ? ` · ${holds} on hold` : ""}`;
+    const card = $("#grid").querySelector(`.card[data-id="${CSS.escape(r.id)}"]`);
+    if (card) card.outerHTML = cardHTML(r);
+  } catch {}
 }
 
 function toggleFav(id) {
@@ -223,19 +237,20 @@ let run = 0, page = 0, pages = 1, loading = false, topRows = null, seen = new Ma
 
 function visible(rows) { return S.onShelf ? rows.filter(r => r.avail) : rows; }
 
-async function reload() {
+async function liveReload() {
   const my = ++run;
   page = 0; pages = 1; topRows = null; seen = new Map();
   $("#grid").innerHTML = "";
   $("#status").textContent = "Loading…";
   $("#more").textContent = "";
   if (S.sort === "top") return loadTop(my);
-  await loadMore(my);
+  await liveMore(my);
 }
 
-async function loadMore(my = run) {
-  if (loading || page >= pages || S.sort === "top") return;
-  loading = true;
+async function liveMore(my = run) {
+  // One request at a time per view. A newer view never waits on an older one.
+  if (loading === my || page >= pages || S.sort === "top") return;
+  loading = my;
   try {
     const d = await api(searchUrl(page + 1));
     if (my !== run) return;
@@ -259,8 +274,8 @@ async function loadMore(my = run) {
     if (page < pages) fetch(searchUrl(page + 1)).catch(() => {});
   } catch (e) {
     if (my === run) $("#status").textContent = e.message;
-  } finally { loading = false; }
-  if (my === run && page < pages && $("#grid").children.length < 12) loadMore(my);
+  } finally { if (loading === my) loading = false; }
+  if (my === run && page < pages && $("#grid").children.length < 12) liveMore(my);
 }
 
 // Rank a whole shelf by IMDb rating, pulling its pages a few at a time.
@@ -293,6 +308,218 @@ async function loadTop(my) {
     $("#more").textContent = "";
   } catch (e) { if (my === run) $("#status").textContent = e.message; }
 }
+
+// ---- instant mode: the library's weekly copy, filtered and sorted in the browser --------
+
+const GENRES = [
+  ["horror", "Horror", "horror"], ["comedy", "Comedy", "comedy"], ["romcom", "Rom-com", "romcom"], ["scifi", "Sci-fi", "scifi"],
+  ["action", "Action", "action"], ["thriller", "Thriller", "suspense"], ["crime", "Crime", ""], ["drama", "Drama", ""],
+  ["animation", "Animation", "animation"], ["family", "Family", "family"], ["fantasy", "Fantasy", ""], ["romance", "Romance", ""],
+  ["documentary", "Documentary", "documentary"], ["foreign", "Foreign", "foreign"], ["western", "Western", "western"],
+  ["war", "War", "war"], ["musical", "Musical", "musical"], ["superhero", "Superhero", ""], ["biography", "Biography", ""],
+  ["history", "History", ""], ["sports", "Sports", ""], ["tv", "TV shows", "tv"],
+];
+const COLLECTIONS = [["mustsee", "1001 must-sees"], ["oscar", "Oscar winners"], ["registry", "Film Registry"], ["criterion", "Criterion"], ["ghibli", "Studio Ghibli"]];
+const FMT_NAME = { b: "Blu-ray", d: "DVD", g: "Game" };
+const YEAR_MIN = 1920, YEAR_MAX = new Date().getFullYear();
+const PER = 60;
+
+let SNAP = null, snapList = [], snapShown = 0, liveQ = false;
+
+// Row layout from the crawler:
+// [id, title, sub, fmt, discYear, cover, onShelf, holds, genres, tv, platform, rating, votes, imdb, filmYear]
+function fromRow(x, lib) {
+  return {
+    id: x[0], title: x[1], sub: x[2], f: x[3], fmt: FMT_NAME[x[3]], disc: x[4] || null, img: x[5] || null,
+    avail: !!x[6], holds: x[7], genres: x[8] ? x[8].split(",") : [], tv: !!x[9], plat: x[10],
+    r: x[11] || 0, v: x[12] || 0, imdb: x[13] || null, fy: x[14] || null,
+    url: `https://${lib}.bibliocommons.com/v2/record/${x[0]}`, n: +String(x[0]).replace(/\D+/g, "").slice(-9) || 0,
+  };
+}
+
+// Everyone asking for the same library shares one download.
+let snapping = null;
+function loadSnap() {
+  if (SNAP && SNAP.lib === S.lib && SNAP.ver) return Promise.resolve(SNAP);
+  if (snapping && snapping.lib === S.lib) return snapping.p;
+  const lib = S.lib;
+  const p = fetchSnap(lib).finally(() => { if (snapping?.p === p) snapping = null; });
+  snapping = { lib, p };
+  return p;
+}
+async function fetchSnap(lib) {
+  try {
+    const d = await api("/api/snap?lib=" + encodeURIComponent(lib));
+    if (lib !== S.lib) return null;
+    if (!d.ver) return (SNAP = { lib, building: true, done: d.done, expect: d.expect });
+    const films = [], games = [], seenF = new Map();
+    for (const x of d.rows) {
+      const r = fromRow(x, lib);
+      rowsById.set(r.id, r);
+      if (r.f === "g") games.push(r); else films.push(r);
+    }
+    SNAP = { lib, ver: d.ver, finished: d.finished, films: merge(films, seenF), games };
+  } catch (e) { console.warn("instant copy unavailable:", e); SNAP = { lib, building: true, done: 0, expect: 0 }; }
+  return SNAP;
+}
+
+const instant = () => SNAP && SNAP.lib === S.lib && SNAP.ver && !S.coll && !liveQ;
+
+function snapFilter() {
+  const q = norm($("#q").value);
+  const words = q ? q.split(" ") : [];
+  let L = S.fmt === "games" ? SNAP.games : SNAP.films;
+  const want = S.fmt === "br" ? "b" : S.fmt === "dvd" ? "d" : "";
+  return L.filter(r => {
+    if (want && !(r.fs || r.f).includes(want)) return false;
+    if (S.fmt === "games") { if (S.plat && r.plat !== S.plat) return false; }
+    else if (S.genre && !r.genres.includes(S.genre)) return false;
+    if (S.onShelf && !r.avail) return false;
+    const y = r.fy || r.disc;
+    if (S.y0 && (!y || y < S.y0)) return false;
+    if (S.y1 && (!y || y > S.y1)) return false;
+    if (S.minR && !(r.r >= S.minR && r.v >= 500)) return false;
+    if (words.length) { const t = norm(r.title + " " + r.sub); if (!words.every(w => t.includes(w))) return false; }
+    return true;
+  });
+}
+
+function snapSort(L) {
+  const by = {
+    top: (a, b) => ((b.v >= 1000 ? b.r : 0) - (a.v >= 1000 ? a.r : 0)) || b.v - a.v,
+    title: (a, b) => norm(a.title).localeCompare(norm(b.title)),
+    year: (a, b) => ((b.fy || b.disc || 0) - (a.fy || a.disc || 0)) || b.n - a.n,
+    old: (a, b) => ((a.fy || a.disc || 9999) - (b.fy || b.disc || 9999)) || a.n - b.n,
+  }[S.sort] || ((a, b) => b.n - a.n);   // newest records first
+  return L.sort(by);
+}
+
+function snapRender() {
+  ++run;
+  snapList = snapSort(snapFilter());
+  snapShown = 0;
+  $("#grid").innerHTML = "";
+  const when = new Date(SNAP.finished).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const q = $("#q").value.trim();
+  $("#status").innerHTML = `${snapList.length.toLocaleString()} ${S.fmt === "games" ? "games" : "titles"}` +
+    (S.onShelf ? ` <span class="dim">· shelf status from ${when}, tap a title for right now</span>` : "") +
+    (q ? ` · <button class="link" id="wholeCat">Search the whole catalog for “${esc(q)}”</button>` : "");
+  snapMore();
+}
+
+function snapMore() {
+  if (snapShown >= snapList.length) { $("#more").textContent = snapList.length ? "That's the whole shelf." : (($("#q").value.trim()) ? "" : "Nothing matches these filters."); return; }
+  const next = snapList.slice(snapShown, snapShown + PER);
+  snapShown += next.length;
+  $("#grid").insertAdjacentHTML("beforeend", next.map(cardHTML).join(""));
+  $("#more").textContent = snapShown < snapList.length ? "Loading more…" : "That's the whole shelf.";
+}
+
+function loadMore() { if (snapping) return; if (instant()) snapMore(); else liveMore(); }
+
+async function reload() {
+  paintActive();
+  if (S.lib && (!SNAP || SNAP.lib !== S.lib)) {
+    $("#grid").innerHTML = ""; $("#status").textContent = "Opening your library…"; $("#more").textContent = "";
+    await loadSnap();
+  }
+  if (instant()) return snapRender();
+  // live mode: before the weekly copy exists, for collections, and for whole-catalog searches
+  S.shelf = S.fmt === "games" ? "all" : S.coll || (GENRES.find(g => g[0] === S.genre)?.[2]) || "all";
+  await liveReload();
+  if (SNAP?.building && !S.coll && !liveQ) {
+    const pct = SNAP.expect ? Math.min(99, Math.round(100 * SNAP.done / SNAP.expect)) : 0;
+    $("#status").insertAdjacentHTML("beforeend", ` <span class="dim">· Getting ${esc(S.libName)} ready to open instantly${pct ? ` (${pct}%)` : ""}. It's a little slower until then.</span>`);
+  }
+}
+
+// ---- filters ---------------------------------------------------------------------
+
+const activeCount = () => [S.genre, S.coll, S.plat, S.y0 || S.y1, S.minR, S.onShelf].filter(Boolean).length;
+
+function paintActive() {
+  const bits = [];
+  const g = GENRES.find(x => x[0] === S.genre), c = COLLECTIONS.find(x => x[0] === S.coll);
+  if (S.fmt !== "games" && g) bits.push(["genre", g[1]]);
+  if (c) bits.push(["coll", c[1]]);
+  if (S.fmt === "games" && S.plat) bits.push(["plat", S.plat]);
+  if (S.y0 || S.y1) bits.push(["years", `${S.y0 || YEAR_MIN} to ${S.y1 || YEAR_MAX}`]);
+  if (S.minR) bits.push(["minR", `★ ${S.minR}+`]);
+  if (S.onShelf) bits.push(["onShelf", "On the shelf"]);
+  $("#active").innerHTML = bits.map(([k, l]) => `<button class="tag" data-clear="${k}" aria-label="Remove ${esc(l)}">${esc(l)} <span aria-hidden="true">×</span></button>`).join("") +
+    (bits.length > 1 ? `<button class="link" data-clear="all">Clear all</button>` : "");
+  const n = activeCount();
+  $("#filtN").textContent = n ? `(${n})` : "";
+}
+
+function clearFilter(k) {
+  if (k === "all" || k === "genre") S.genre = "";
+  if (k === "all" || k === "coll") S.coll = "";
+  if (k === "all" || k === "plat") S.plat = "";
+  if (k === "all" || k === "years") { S.y0 = 0; S.y1 = 0; }
+  if (k === "all" || k === "minR") S.minR = 0;
+  if (k === "all" || k === "onShelf") S.onShelf = false;
+}
+
+function filterCount() {
+  if (!instant() && !(SNAP?.ver && !liveQ && !S.coll)) return "";
+  return snapFilter().length.toLocaleString();
+}
+
+function openFilters() {
+  const games = S.fmt === "games";
+  const plats = games && SNAP?.games ? [...new Set(SNAP.games.map(g => g.plat).filter(Boolean))].sort() : [];
+  const chip = (attr, val, label, on) => `<button class="chip" ${attr}="${esc(val)}" aria-pressed="${on}">${esc(label)}</button>`;
+  $("#filtBody").innerHTML = `<div class="in acct-body filt-body">
+    <button class="x" data-close aria-label="Close">×</button>
+    <h2>Filters</h2>
+    ${games ? `<h3>Platform</h3><div class="chipgrid">${chip("data-plat", "", "All", !S.plat)}${plats.map(p => chip("data-plat", p, p, S.plat === p)).join("")}</div>`
+      : `<h3>Genre</h3><div class="chipgrid">${chip("data-genre", "", "All", !S.genre && !S.coll)}${GENRES.map(([k, l]) => chip("data-genre", k, l, S.genre === k && !S.coll)).join("")}</div>
+         <h3>Collections</h3><div class="chipgrid">${COLLECTIONS.map(([k, l]) => chip("data-coll", k, l, S.coll === k)).join("")}</div>`}
+    <h3>Year</h3>
+    <div class="range2">
+      <label>From <output id="y0o">${S.y0 || YEAR_MIN}</output><input type="range" id="y0" min="${YEAR_MIN}" max="${YEAR_MAX}" value="${S.y0 || YEAR_MIN}"></label>
+      <label>To <output id="y1o">${S.y1 || YEAR_MAX}</output><input type="range" id="y1" min="${YEAR_MIN}" max="${YEAR_MAX}" value="${S.y1 || YEAR_MAX}"></label>
+    </div>
+    ${games ? "" : `<h3>Rating</h3>
+    <label class="range1">At least <output id="mro">${S.minR ? "★ " + S.minR : "any"}</output><input type="range" id="minR" min="0" max="9" step="0.5" value="${S.minR}"></label>`}
+    <label class="toggle big"><input type="checkbox" id="onShelfF" ${S.onShelf ? "checked" : ""}> On the shelf now</label>
+    <div class="stack" style="margin-top:18px">
+      <button class="btn" id="filtShow">Show ${filterCount() ? filterCount() + " " : ""}titles</button>
+      <button class="link" id="filtClear" style="justify-self:center">Clear all</button>
+    </div></div>`;
+  if (!$("#filters").open) $("#filters").showModal();
+}
+
+function filtChanged(rerender = true) {
+  save(); paintActive();
+  const btn = $("#filtShow");
+  if (btn) { const n = filterCount(); btn.textContent = `Show ${n ? n + " " : ""}titles`; }
+  if (rerender) openFilters();
+}
+
+$("#filtBody").addEventListener("click", e => {
+  const g = e.target.closest("[data-genre]"), c = e.target.closest("[data-coll]"), p = e.target.closest("[data-plat]");
+  if (g) { S.genre = g.dataset.genre; S.coll = ""; filtChanged(); }
+  else if (c) { S.coll = S.coll === c.dataset.coll ? "" : c.dataset.coll; if (S.coll) S.genre = ""; filtChanged(); }
+  else if (p) { S.plat = p.dataset.plat; filtChanged(); }
+  else if (e.target.id === "filtClear") { clearFilter("all"); filtChanged(); }
+  else if (e.target.id === "filtShow") { $("#filters").close(); }
+});
+$("#filtBody").addEventListener("input", e => {
+  const t = e.target;
+  if (t.id === "y0" || t.id === "y1") {
+    let a = +$("#y0").value, b = +$("#y1").value;
+    if (a > b) { if (t.id === "y0") b = a; else a = b; $("#y0").value = a; $("#y1").value = b; }
+    $("#y0o").textContent = a; $("#y1o").textContent = b;
+    S.y0 = a > YEAR_MIN ? a : 0; S.y1 = b < YEAR_MAX ? b : 0; filtChanged(false);
+  } else if (t.id === "minR") { S.minR = +t.value; $("#mro").textContent = S.minR ? "★ " + S.minR : "any"; filtChanged(false); }
+  else if (t.id === "onShelfF") { S.onShelf = t.checked; filtChanged(false); }
+});
+$("#filters").addEventListener("close", () => { liveQ = false; reload(); });
+$("#filtBtn").onclick = openFilters;
+$("#active").addEventListener("click", e => { const b = e.target.closest("[data-clear]"); if (b) { clearFilter(b.dataset.clear); save(); reload(); } });
+document.addEventListener("click", e => { if (e.target.id === "wholeCat") { liveQ = true; reload(); } });
 
 // ---- favorites and watchlist tabs ------------------------------------------------
 
@@ -596,16 +823,14 @@ function setTab(tab) {
 
 function paintControls() {
   document.querySelectorAll("#fmt button").forEach(b => b.setAttribute("aria-pressed", b.dataset.fmt === S.fmt));
-  document.querySelectorAll("#chips button").forEach(b => b.setAttribute("aria-pressed", b.dataset.shelf === S.shelf && !$("#q").value.trim()));
   $("#sort").value = S.sort;
-  $("#onShelf").checked = !!S.onShelf;
 }
 
 async function chooseLibrary(q, demo = false) {
   $("#pickErr").textContent = "";
   try {
     const info = await api("/api/library?q=" + encodeURIComponent(q));
-    S.lib = info.slug; S.libName = info.name; S.demo = demo; S.shelf = "all"; S.sort = "";
+    S.lib = info.slug; S.libName = info.name; S.demo = demo; S.shelf = "all"; S.sort = ""; clearFilter("all"); S.fmt = "all";
     save(); boot();
   } catch (e) { $("#pickErr").textContent = e.message; }
 }
@@ -613,7 +838,7 @@ async function chooseLibrary(q, demo = false) {
 function showHome() {
   $("#pick").hidden = false; $("#shelf").hidden = true;
   $("#libBtn").hidden = true;   // the home page has its own "Back to" button
-  if (S.lib) fetch(searchUrl(1)).catch(() => {});
+  if (S.lib) loadSnap();
   $("#resume").hidden = !S.lib;
   if (S.lib) $("#resume").textContent = `Back to ${S.libName || S.lib}`;
   $("#pickInput").value = ""; $("#pickErr").textContent = "";
@@ -628,13 +853,12 @@ function boot() {
   paintControls(); setTab("browse"); reload();
 }
 
-$("#chips").innerHTML = SHELVES.map(([k, l]) => `<button data-shelf="${k}">${l}</button>`).join("");
-$("#chips").onclick = e => { const b = e.target.closest("button"); if (!b) return; S.shelf = b.dataset.shelf; $("#q").value = ""; save(); paintControls(); reload(); };
 $("#fmt").onclick = e => { const b = e.target.closest("button"); if (!b) return; S.fmt = b.dataset.fmt; save(); paintControls(); reload(); };
 $("#sort").onchange = () => { S.sort = $("#sort").value; save(); reload(); };
-$("#onShelf").onchange = () => { S.onShelf = $("#onShelf").checked; save(); reload(); };
-$("#searchForm").onsubmit = e => { e.preventDefault(); $("#q").blur(); paintControls(); reload(); };
-$("#q").addEventListener("search", () => { if (!$("#q").value) { paintControls(); reload(); } });
+$("#searchForm").onsubmit = e => { e.preventDefault(); $("#q").blur(); liveQ = !instant() && !!$("#q").value.trim() ? liveQ : false; reload(); };
+let typing;
+$("#q").addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(() => { liveQ = false; if (instant() || SNAP?.ver) reload(); }, 180); });
+$("#q").addEventListener("search", () => { if (!$("#q").value) { liveQ = false; reload(); } });
 document.querySelector(".tabs").onclick = e => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); };
 $("#pickForm").onsubmit = e => { e.preventDefault(); chooseLibrary($("#pickInput").value); };
 $("#trySeattle").onclick = () => chooseLibrary("seattle", true);
@@ -659,7 +883,7 @@ $("#wlFile").onchange = async () => {
   S.watch = { ...w, imported: Date.now(), matches: {} };
   save(); matchWatchlist();
 };
-new IntersectionObserver(es => { if (es[0].isIntersecting && !$("#browse").hidden) loadMore(); }, { rootMargin: "800px" }).observe($("#more"));
+new IntersectionObserver(es => { if (es[0].isIntersecting && !$("#shelf").hidden && !$("#browse").hidden && S.lib) loadMore(); }, { rootMargin: "800px" }).observe($("#more"));
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 
 // The shelf starts loading right away. The account check runs alongside it.

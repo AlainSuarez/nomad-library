@@ -26,7 +26,7 @@ export const SHELVES = {
   musical:   { q: "musical films", st: "subject" },
   tv:        { q: "television programs", st: "subject" },
 };
-const FMT = { all: "DVD|BLURAY", br: "BLURAY", dvd: "DVD" };
+const FMT = { all: "DVD|BLURAY", br: "BLURAY", dvd: "DVD", games: "VIDEO_GAME" };
 const SORTS = { new: "newly_acquired", title: "title", year: "published_date" };
 
 function path(lib, s, fmt, page, sort) {

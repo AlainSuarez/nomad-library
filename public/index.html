@@ -82,17 +82,18 @@
       </form>
       <div class="controls">
         <div class="seg" id="fmt">
-          <button data-fmt="all">Both</button><button data-fmt="br">Blu-ray</button><button data-fmt="dvd">DVD</button>
+          <button data-fmt="all">Both</button><button data-fmt="br">Blu-ray</button><button data-fmt="dvd">DVD</button><button data-fmt="games">Games</button>
         </div>
         <select id="sort" aria-label="Sort">
-          <option value="">Library order</option>
-          <option value="top">Top rated on IMDb</option>
-          <option value="new">Newest arrivals</option>
+          <option value="">Newest arrivals</option>
+          <option value="top">Top rated</option>
           <option value="title">A to Z</option>
+          <option value="year">Newest films</option>
+          <option value="old">Oldest films</option>
         </select>
-        <label class="toggle"><input type="checkbox" id="onShelf"> On the shelf now</label>
+        <button class="btn ghost filt" id="filtBtn" type="button">Filters <span id="filtN"></span></button>
       </div>
-      <div class="chips" id="chips"></div>
+      <div class="active" id="active"></div>
       <p class="status" id="status"></p>
       <div class="grid" id="grid"></div>
       <div id="more" class="more"></div>
@@ -131,6 +132,9 @@
 
 <!-- movie detail -->
 <dialog id="detail" class="sheet"><div id="detailBody"></div></dialog>
+
+<!-- filters -->
+<dialog id="filters" class="sheet small" aria-label="Filters"><div id="filtBody"></div></dialog>
 
 <!-- account -->
 <dialog id="account" class="sheet small"><div id="acctBody"></div></dialog>

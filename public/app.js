@@ -511,6 +511,7 @@ async function chooseLibrary(q) {
 
 function showHome() {
   $("#pick").hidden = false; $("#shelf").hidden = true;
+  $("#libBtn").hidden = true;   // the home page has its own "Back to" button
   if (S.lib) fetch(searchUrl(1)).catch(() => {});
   $("#resume").hidden = !S.lib;
   if (S.lib) $("#resume").textContent = `Back to ${S.libName || S.lib}`;
@@ -560,11 +561,9 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").cat
 // The shelf starts loading right away. The account check runs alongside it.
 // Every visit opens on the home page. A saved library gets a one-tap "Back to" button there.
 showHome();
-if (S.lib) { $("#libBtn").hidden = false; $("#libBtn").textContent = S.libName || S.lib; }
 counts();
 refreshMe().then(() => {
   if (!me.uid) return;
   mergeIn(me.data); store.set(S);
   if ($("#pick").hidden) counts(); else showHome();
-  if (S.lib) { $("#libBtn").hidden = false; $("#libBtn").textContent = S.libName || S.lib; }
-});
+  });

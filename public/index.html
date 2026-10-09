@@ -15,6 +15,7 @@
 <meta property="og:title" content="Nomad Library">
 <meta property="og:description" content="Every movie at your public library, on one shelf you can actually browse.">
 <meta property="og:image" content="/icons/icon-512.png">
+<link rel="preconnect" href="https://secure.syndetics.com">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -37,28 +38,32 @@
 <main>
   <!-- first run: pick a library -->
   <section id="pick" class="pick" hidden>
-    <img src="/icons/icon-192.png" alt="" width="96" height="96" class="pick-logo">
-    <h1>Your library's movies, all on one shelf.</h1>
-    <p class="lede">Browse every DVD and Blu-ray at your public library with ratings, trailers and what's on the shelf right now. It's free, and so is borrowing them.</p>
-    <form id="pickForm" class="pick-form">
-      <label for="pickInput">Paste your library's catalog link</label>
-      <div class="row">
-        <input id="pickInput" type="text" inputmode="url" autocomplete="off" placeholder="yourlibrary.bibliocommons.com">
-        <button type="submit">Open</button>
-      </div>
-      <p class="err" id="pickErr" role="alert"></p>
-    </form>
-    <details class="how">
-      <summary>Where do I find that?</summary>
-      <p>Go to your library's website and click Catalog or Search. If the address bar shows <b>something.bibliocommons.com</b>, copy that whole link and paste it here. If it doesn't, your library uses different software and isn't supported yet.</p>
-    </details>
-    <div class="quick">
-      <span>Or try one</span>
-      <button data-lib="nypl">New York</button>
-      <button data-lib="chipublib">Chicago</button>
-      <button data-lib="seattle">Seattle</button>
+    <div class="hero-copy">
+      <img src="/icons/icon-192.png" alt="" width="88" height="88" class="pick-logo">
+      <h1>Your library's movies,<br>all on one shelf.</h1>
+      <p class="lede">Browse every DVD and Blu-ray at your public library with ratings, trailers and what's on the shelf right now. It's free, and so is borrowing them.</p>
+      <!-- When the video is live, its YouTube embed goes here. -->
     </div>
-    <p class="have-acct">Already have an account? <button class="link" id="pickSignin">Sign in</button></p>
+    <div class="hero-card">
+      <button class="btn resume" id="resume" hidden></button>
+      <form id="pickForm" class="pick-form">
+        <label for="pickInput">Paste your library's catalog link</label>
+        <div class="row">
+          <input id="pickInput" type="text" inputmode="url" autocomplete="off" placeholder="yourlibrary.bibliocommons.com">
+          <button type="submit">Open</button>
+        </div>
+        <p class="err" id="pickErr" role="alert"></p>
+      </form>
+      <details class="how">
+        <summary>Where do I find that?</summary>
+        <p>Go to your library's website and click Catalog or Search. If the address bar shows <b>something.bibliocommons.com</b>, copy that whole link and paste it here. If it doesn't, your library uses different software and isn't supported yet.</p>
+      </details>
+      <div class="quick">
+        <span>Just looking?</span>
+        <button data-lib="seattle">Try Seattle's library</button>
+      </div>
+      <p class="have-acct">Already have an account? <button class="link" id="pickSignin">Sign in</button></p>
+    </div>
   </section>
 
   <!-- the shelf -->
@@ -119,7 +124,8 @@
 
 <footer class="foot">
   <p><a id="donate" href="https://venmo.com/u/chrisgpresents" target="_blank" rel="noopener">Keep Nomad Library free: tip on Venmo @chrisgpresents</a></p>
-  <p>Made by <a href="https://www.youtube.com/@NomadOverNormal" target="_blank" rel="noopener">Nomad Over Normal</a>. Not affiliated with any library or BiblioCommons. Ratings from IMDb's public datasets.</p>
+  <p>Website designed by <a href="https://www.youtube.com/@NomadOverNormal" target="_blank" rel="noopener">Nomad Over Normal</a></p>
+  <p class="fine">Not affiliated with any library or BiblioCommons. Ratings from IMDb's public datasets.</p>
 </footer>
 
 <!-- movie detail -->

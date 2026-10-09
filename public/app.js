@@ -117,8 +117,9 @@ const favKey = r => `${S.lib}:${r.id}`;
 const isFav = r => !!S.faves[favKey(r)];
 const filmYear = r => r.fy || r.disc || "";
 
+const badgeHTML = r => (r.r && r.v >= 50 ? `<span class="badge"><b>★</b> ${r.r.toFixed(1)}</span>` : "");
 function cardHTML(r) {
-  const rating = r.r && r.v >= 50 ? `<span class="badge"><b>★</b> ${r.r.toFixed(1)}</span>` : "";
+  const rating = badgeHTML(r);
   const cover = r.img
     ? `<img loading="lazy" src="${esc(r.img)}" alt="" onload="if(this.naturalWidth<20)this.onerror()" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'noimg',textContent:${esc(JSON.stringify(r.title))}}))">`
     : `<span class="noimg">${esc(r.title)}</span>`;
@@ -234,11 +235,23 @@ async function loadMore(my = run) {
     const d = await api(searchUrl(page + 1));
     if (my !== run) return;
     page = d.page; pages = d.pages;
-    await rate(remember(d.rows));
-    if (my !== run) return;
-    $("#grid").insertAdjacentHTML("beforeend", visible(merge(d.rows, seen)).map(cardHTML).join(""));
+    remember(d.rows);
+    // Covers go up right away. Ratings fill in a moment later, then duplicate editions fold together.
+    const shown = visible(d.rows);
+    $("#grid").insertAdjacentHTML("beforeend", shown.map(cardHTML).join(""));
+    rate(d.rows).then(() => {
+      if (my !== run) return;
+      const keep = new Set(merge(d.rows, seen).map(r => r.id));
+      for (const r of shown) {
+        const card = $("#grid").querySelector(`.card[data-id="${CSS.escape(r.id)}"]`);
+        if (!card) continue;
+        if (!keep.has(r.id)) { card.remove(); continue; }
+        card.outerHTML = cardHTML(r);
+      }
+    });
     $("#status").textContent = d.total ? `${d.total.toLocaleString()} titles` : "Nothing here at this library.";
     $("#more").textContent = page < pages ? "Loading more…" : (d.total ? "That's the whole shelf." : "");
+    if (page < pages) fetch(searchUrl(page + 1)).catch(() => {});
   } catch (e) {
     if (my === run) $("#status").textContent = e.message;
   } finally { loading = false; }
@@ -496,9 +509,18 @@ async function chooseLibrary(q) {
   } catch (e) { $("#pickErr").textContent = e.message; }
 }
 
+function showHome() {
+  $("#pick").hidden = false; $("#shelf").hidden = true;
+  if (S.lib) fetch(searchUrl(1)).catch(() => {});
+  $("#resume").hidden = !S.lib;
+  if (S.lib) $("#resume").textContent = `Back to ${S.libName || S.lib}`;
+  $("#pickInput").value = ""; $("#pickErr").textContent = "";
+  window.scrollTo(0, 0);
+}
+
 function boot() {
   counts();
-  if (!S.lib) { $("#pick").hidden = false; $("#shelf").hidden = true; $("#libBtn").hidden = true; return; }
+  if (!S.lib) { showHome(); $("#libBtn").hidden = true; return; }
   $("#pick").hidden = true; $("#shelf").hidden = false;
   $("#libBtn").hidden = false; $("#libBtn").textContent = S.libName || S.lib;
   paintControls(); setTab("browse"); reload();
@@ -514,8 +536,9 @@ $("#q").addEventListener("search", () => { if (!$("#q").value) { paintControls()
 document.querySelector(".tabs").onclick = e => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); };
 $("#pickForm").onsubmit = e => { e.preventDefault(); chooseLibrary($("#pickInput").value); };
 document.querySelector(".quick").onclick = e => { const b = e.target.closest("button"); if (b) chooseLibrary(b.dataset.lib); };
-$("#libBtn").onclick = () => { $("#pick").hidden = false; $("#shelf").hidden = true; $("#pickInput").value = ""; $("#pickInput").focus(); };
-$("#home").onclick = e => { e.preventDefault(); if (!S.lib) return; S.shelf = "all"; S.sort = ""; S.onShelf = false; $("#q").value = ""; save(); boot(); window.scrollTo(0, 0); };
+$("#libBtn").onclick = () => { showHome(); $("#pickInput").focus(); };
+$("#home").onclick = e => { e.preventDefault(); showHome(); };
+$("#resume").onclick = () => boot();
 $("#acctBtn").onclick = openAccount;
 $("#pickSignin").onclick = openAccount;
 document.addEventListener("click", e => {
@@ -534,4 +557,14 @@ $("#wlFile").onchange = async () => {
 new IntersectionObserver(es => { if (es[0].isIntersecting && !$("#browse").hidden) loadMore(); }, { rootMargin: "800px" }).observe($("#more"));
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 
-refreshMe().then(() => { if (me.uid) { mergeIn(me.data); store.set(S); } boot(); });
+// The shelf starts loading right away. The account check runs alongside it.
+// Every visit opens on the home page. A saved library gets a one-tap "Back to" button there.
+showHome();
+if (S.lib) { $("#libBtn").hidden = false; $("#libBtn").textContent = S.libName || S.lib; }
+counts();
+refreshMe().then(() => {
+  if (!me.uid) return;
+  mergeIn(me.data); store.set(S);
+  if ($("#pick").hidden) counts(); else showHome();
+  if (S.lib) { $("#libBtn").hidden = false; $("#libBtn").textContent = S.libName || S.lib; }
+});

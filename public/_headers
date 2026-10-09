@@ -1,0 +1,6 @@
+/ix/*
+  Cache-Control: public, max-age=2592000
+/icons/*
+  Cache-Control: public, max-age=2592000
+/vendor/*
+  Cache-Control: public, max-age=2592000

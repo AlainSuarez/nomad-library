@@ -23,11 +23,17 @@ function save() {
   store.set(S);
   if (!me.uid) return;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    fetch("/api/me", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ data: synced() }) })
-      .catch(() => {});
-  }, 1200);
+  saveTimer = setTimeout(flushSave, 3000);
 }
+function flushSave() {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer); saveTimer = null;
+  if (!me.uid) return;
+  fetch("/api/me", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ data: synced() }), keepalive: true })
+    .catch(() => {});
+}
+addEventListener("pagehide", flushSave);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushSave(); });
 const synced = () => ({ ...(S.demo ? {} : { lib: S.lib, libName: S.libName }), fmt: S.fmt, faves: S.faves, watch: S.watch });
 
 function toast(msg) {
@@ -661,18 +667,33 @@ async function refreshMe() {
   return me;
 }
 
-function mergeIn(data) {
+// signingIn: bring this device's favorites into the account once.
+// Every other time, the account is the truth, so a favorite removed on one device stays removed.
+function mergeIn(data, signingIn = false) {
   if (!data) return;
-  S.faves = { ...(data.faves || {}), ...S.faves };
+  S.faves = signingIn ? { ...(data.faves || {}), ...S.faves } : { ...(data.faves || {}) };
   // Your account's library wins over whatever this device was last browsing.
   if (data.lib) { S.lib = data.lib; S.libName = data.libName; S.demo = false; }
-  if (!S.watch && data.watch) S.watch = data.watch;
+  if (data.watch || !signingIn) S.watch = data.watch || S.watch;
   if (data.fmt && !store.get().fmt) S.fmt = data.fmt;
 }
 
+// Coming back to an open tab or the home screen app picks up changes made on other devices.
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible" || !me.uid || saveTimer) return;
+  const before = JSON.stringify(S.faves) + JSON.stringify(S.watch?.matches || {});
+  await refreshMe();
+  if (!me.uid) return;
+  mergeIn(me.data); store.set(S);
+  if (JSON.stringify(S.faves) + JSON.stringify(S.watch?.matches || {}) === before) return;
+  counts();
+  if (!$("#faves").hidden) showFaves();
+  if (!$("#watch").hidden) showWatch();
+});
+
 async function afterSignIn(extra) {
   await refreshMe();
-  mergeIn(me.data);
+  mergeIn(me.data, true);
   save();
   if (extra?.code) return showCode(extra.code, true);
   if (!me.data?.lib) return libraryStep();

@@ -1,6 +1,6 @@
 # Nomad Library
 
-Any BiblioCommons library's DVDs and Blu-rays on one browsable shelf. Live: https://nomad-library.pages.dev
+Any BiblioCommons library's DVDs and Blu-rays on one browsable shelf. Live: https://library.nomadovernormal.com (nomad-library.pages.dev redirects there)
 
 - `functions/api/search.js` relays the library's public gateway (no key). Shelves are subject/tag queries that work at every library.
 - Ratings: `tools/build_index.py` turns IMDb's free datasets into `public/ix/*.json` shards; the browser matches them (Workers Free allows only 10 ms CPU, so matching never runs on the server). The disc year is a ceiling, most-voted wins, subtitles must match.

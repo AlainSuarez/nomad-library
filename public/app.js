@@ -372,6 +372,56 @@ async function showWatch() {
     : "";
 }
 
+// ---- home screen (phones) ----------------------------------------------------------
+
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+const isPhone = () => /iphone|ipad|ipod|android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /macintosh/i.test(navigator.userAgent));
+let installPrompt = null;
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installPrompt = e; });
+const SHARE_ICON = `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5v11"/><path d="M8 7.3l4-3.8 4 3.8"/><path d="M6.5 11H6a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 6 20.5h12a1.5 1.5 0 0 0 1.5-1.5v-6.5A1.5 1.5 0 0 0 18 11h-.5"/></svg>`;
+const ADD_ICON = `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8.5v7M8.5 12h7"/></svg>`;
+const DOTS_ICON = `<svg class="ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>`;
+
+// Shown once right after sign-up or sign-in on a phone, unless it's already on the home screen.
+function homeScreenOffer(then) {
+  if (!isPhone() || isStandalone()) return then();
+  acctView(`<h2>Keep Nomad Library on your phone</h2>
+    <p>Put it on your home screen and it opens like an app, with one tap. It takes about 20 seconds.</p>
+    <div class="stack">
+      <button class="btn" id="hsShow">Show me how</button>
+      <button class="btn ghost" id="hsLater">Maybe later</button>
+    </div>`);
+  if (!$("#account").open) $("#account").showModal();
+  $("#hsShow").onclick = () => homeScreenGuide(then);
+  $("#hsLater").onclick = () => then();
+}
+
+function homeScreenGuide(then, tab) {
+  const android = tab ? tab === "android" : /android/i.test(navigator.userAgent);
+  const ios = `<ol class="steps">
+      <li>Open <b>library.nomadovernormal.com</b> in Safari.</li>
+      <li>Tap the Share button ${SHARE_ICON}. If you don't see it, tap ${DOTS_ICON} first, then Share.</li>
+      <li>Scroll down and tap ${ADD_ICON} <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+      <li>Open Nomad Library from your home screen and sign in once more with your passkey. The home screen app keeps its own sign-in.</li></ol>`;
+  const droid = `${installPrompt ? `<button class="btn" id="hsInstall" style="width:100%;margin-bottom:14px">Install Nomad Library</button>` : ""}
+    <ol class="steps">
+      <li>Open <b>library.nomadovernormal.com</b> in Chrome.</li>
+      <li>Tap the menu ${DOTS_ICON} in the top right corner.</li>
+      <li>Tap <b>Add to home screen</b>, then <b>Install</b>.</li>
+      <li>Open Nomad Library from your home screen. You'll still be signed in.</li></ol>`;
+  acctView(`<h2>Put it on your home screen</h2>
+    ${isStandalone() ? `<p>You're already using Nomad Library from your home screen, so you're all set.</p>` : ""}
+    <div class="seg hs-tabs" role="tablist">
+      <button role="tab" data-t="iphone" aria-pressed="${!android}">iPhone</button><button role="tab" data-t="android" aria-pressed="${android}">Android</button>
+    </div>
+    ${android ? droid : ios}
+    <button class="btn" id="hsDone" style="width:100%;margin-top:6px">Done</button>`);
+  if (!$("#account").open) $("#account").showModal();
+  document.querySelectorAll(".hs-tabs button").forEach(b => b.onclick = () => homeScreenGuide(then, b.dataset.t));
+  $("#hsInstall")?.addEventListener("click", async () => { const p = installPrompt; installPrompt = null; await p.prompt(); homeScreenGuide(then, "android"); });
+  $("#hsDone").onclick = () => (then ? then() : $("#account").close());
+}
+
 // ---- accounts ------------------------------------------------------------------
 
 const WA = window.SimpleWebAuthnBrowser;
@@ -399,9 +449,11 @@ async function afterSignIn(extra) {
   save();
   if (extra?.code) return showCode(extra.code, true);
   if (!me.data?.lib) return libraryStep();
-  $("#account").close();
-  toast("Signed in. Your shelf is saved.");
-  boot();
+  homeScreenOffer(() => {
+    $("#account").close();
+    toast("Signed in. Your shelf is saved.");
+    boot();
+  });
 }
 
 // Right after signup (or a sign-in with no library yet): pick your own library.
@@ -409,7 +461,7 @@ function libraryStep() {
   const mine = S.lib && !S.demo;
   acctView(`<h2>Now, let's set up your library</h2>
     <p>Paste the link to your public library's catalog. Your account opens to it from now on, on every device.</p>
-    ${mine ? `<button class="btn" id="keepLib" style="width:100%;margin-bottom:14px">Use ${esc(S.libName)}</button><div class="divider">or pick another</div>` : ""}
+    ${mine ? `<p class="small-print" style="margin:0 0 8px">You were just browsing this one:</p><button class="btn" id="keepLib" style="width:100%;margin-bottom:14px">Use ${esc(S.libName)}</button><div class="divider">or pick another</div>` : ""}
     <form id="libStepForm" class="pick-form">
       <label for="libStepIn">Your library's catalog link</label>
       <div class="row">
@@ -424,7 +476,10 @@ function libraryStep() {
     </details>
     <button class="link small-print" id="skipLib">I'll do this later</button>`);
   if (!$("#account").open) $("#account").showModal();
-  const done = () => { save(); $("#account").close(); toast(`Your library is ${S.libName}.`); boot(); };
+  const done = () => {
+    save();
+    homeScreenOffer(() => { $("#account").close(); toast(`Your library is ${S.libName}.`); boot(); });
+  };
   if (mine) $("#keepLib").onclick = done;
   $("#libStepForm").onsubmit = async e => {
     e.preventDefault();
@@ -434,7 +489,7 @@ function libraryStep() {
       done();
     } catch (err) { $("#acctErr").textContent = err.message; }
   };
-  $("#skipLib").onclick = () => { $("#account").close(); showHome(); };
+  $("#skipLib").onclick = () => homeScreenOffer(() => { $("#account").close(); showHome(); });
 }
 
 async function passkeyCreate() {
@@ -457,7 +512,8 @@ function openAccount() {
     acctView(`<h2>Your account</h2>
       <p>Your library, favorites and watchlist are saved and follow you to any device you sign in on.</p>
       <div class="stack">
-        ${passkeysOK() ? `<button class="btn" id="addKey">Add a passkey on this device</button>` : ""}
+        ${isPhone() && !isStandalone() ? `<button class="btn" id="hsGuide">Put it on your home screen</button>` : ""}
+        ${passkeysOK() ? `<button class="btn${isPhone() && !isStandalone() ? " ghost" : ""}" id="addKey">Add a passkey on this device</button>` : ""}
         <button class="btn ghost" id="newCode">Make a new backup code</button>
         <button class="btn ghost" id="signOut">Sign out</button>
         <button class="btn danger" id="delAcct">Delete my account</button>
@@ -517,6 +573,7 @@ document.addEventListener("click", async e => {
     if (t.id === "mkKey") afterSignIn(await passkeyCreate());
     else if (t.id === "useKey") afterSignIn(await passkeySignIn());
     else if (t.id === "useCode") codeForm();
+    else if (t.id === "hsGuide") homeScreenGuide(null);
     else if (t.id === "mkCode") afterSignIn(await api("/api/auth/code-signup", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ data: synced() }) }));
     else if (t.id === "addKey") { await passkeyCreate(); await refreshMe(); toast("Passkey added."); openAccount(); }
     else if (t.id === "newCode") showCode((await api("/api/auth/new-code", { method: "POST" })).code, false);

@@ -184,3 +184,8 @@ select { padding: 8px 10px; border: 1.5px solid var(--rule); border-radius: var(
 .home-acct { border-top: 1px solid var(--rule); margin-top: 20px; padding-top: 20px; }
 .hero-card .pick-form .err:empty { min-height: 0; margin: 0 0 8px; }
 .foot .legal { flex-wrap: wrap; }
+/* home screen guide */
+.steps { padding-left: 22px; margin: 14px 0; }
+.steps li { margin: 0 0 10px; line-height: 1.55; }
+.ico { width: 20px; height: 20px; vertical-align: -4px; display: inline-block; }
+.hs-tabs { margin: 4px 0 2px; }

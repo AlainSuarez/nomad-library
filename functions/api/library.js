@@ -16,6 +16,11 @@ const VENDORS = [
   [/evergreen|\/eg\/opac/i, "Evergreen"],
   [/tlcdelivers|librarycat|biblionix|auto-graphics|atriuum|follett|resourcemate|libraryworld|bibliotheca|opalcat|libib/i, "Other"],
 ];
+// Websites we already know belong to a BiblioCommons library, for homepages that hide their catalog from programs.
+const KNOWN_SITES = {
+  "vpl.ca": "vpl", "burnabypl.ca": "burnaby", "surreylibraries.ca": "surrey", "fvrl.bc.ca": "fvrl", "orl.bc.ca": "orl", "nvcl.ca": "nvcl",
+  "whistlerlibrary.ca": "whistler", "barrielibrary.ca": "barrie", "austintexas.gov": "austin", "library.austintexas.gov": "austin",
+};
 const vendorOf = text => (VENDORS.find(([re]) => re.test(text)) || [])[1] || "";
 const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
 
@@ -42,6 +47,7 @@ async function fromWebsite(ctx, input) {
   const host = hostOf(url);
   if (!/\.[a-z]{2,}$/i.test(host)) return { slug: null, vendor: "", host: "" };
   let vendor = vendorOf(host);
+  if (KNOWN_SITES[host]) return { slug: KNOWN_SITES[host], vendor: "BiblioCommons", host };
   try {
     const first = await get(url);
     vendor = vendor || vendorOf(first.url + " " + first.html.slice(0, 60000));

@@ -48,6 +48,10 @@ await test("a guess from the web address is believed only when the library's own
   const wrong = await ask("spl.org");
   assert.equal(wrong.status, 404, "spl.org must NOT open BiblioCommons' unrelated 'spl' (Stratford)"); assert.equal(wrong.body.unsupported, true);
 });
+await test("a known library website whose homepage hides its catalog still opens", async () => {
+  internet({ "https://vpl.ca": { status: 403 } }, { vpl: "http://bibliocms.com/" });
+  assert.equal((await ask("https://www.vpl.ca/")).body.slug, "vpl");
+});
 await test("another catalog system is recognized and reported, never a dead end", async () => {
   internet({ "https://roxbury.aspendiscovery.org": { status: 403 } }, {});
   const r = await ask("https://roxbury.aspendiscovery.org/?browseCategory=x");

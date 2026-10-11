@@ -267,6 +267,18 @@ scenario("uncopied library: live shelf quickly, one 'wanted' note, no loops", as
   ok(W.oldSnapCalls === 0, "old /api/snap never called");
 });
 
+scenario("copy host unreachable on a first visit: live shelf, registered once, no loop", async b => {
+  const W = world({ snap: { gamma: { abort: true } } });
+  const { page, context } = await newPage(b, W);
+  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
+  const t0 = Date.now(); await pickLibrary(page, "gamma"); await waitCards(page, 12);
+  ok(Date.now() - t0 < 3500, `live shelf anyway (${Date.now() - t0} ms)`);
+  await sleep(2500);
+  ok(W.wants.length === 1 && W.wants[0] === "gamma", `registered once despite a transient failure (${W.wants.length})`);
+  ok(W.snapReqs.length === 1, `one attempt, not a retry loop (${W.snapReqs.length} requests)`);
+  ok(/Couldn't reach the fast copy|isn't copied/.test(await status(page)), `honest note: "${(await status(page)).slice(-62)}"`);
+});
+
 scenario("slow copy: browse live at once, copy joins later without yanking a search", async b => {
   const rows = makeRows("alpha", 6000);
   const W = world({ snap: { alpha: { body: snapBody(rows), delay: 5000 } } });

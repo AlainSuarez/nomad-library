@@ -255,7 +255,7 @@ scenario("uncopied library: live shelf quickly, one 'wanted' note, no loops", as
   note("uncopied library first live shelf (ms)", Date.now() - t0);
   ok(Date.now() - t0 < 3500, `live shelf starts promptly (${Date.now() - t0} ms)`);
   await sleep(600);
-  ok(/filling in/.test(await status(page)), `honest note, no promise of a date: "${(await status(page)).slice(-70)}"`);
+  ok(/queued for its full collection/.test(await status(page)), `honest note, no promise of a date: "${(await status(page)).slice(-70)}"`);
   ok(W.wants.length === 1 && W.wants[0] === "beta", `registered once (${W.wants.length})`);
   const before = W.snapReqs.length;
   await sleep(2500);
@@ -276,7 +276,7 @@ scenario("copy host unreachable on a first visit: live shelf, registered once, n
   await sleep(2500);
   ok(W.wants.length === 1 && W.wants[0] === "gamma", `registered once despite a transient failure (${W.wants.length})`);
   ok(W.snapReqs.length === 1, `one attempt, not a retry loop (${W.snapReqs.length} requests)`);
-  ok(/Couldn't reach the saved collection|filling in/.test(await status(page)), `honest note: "${(await status(page)).slice(-62)}"`);
+  ok(/Couldn't reach the saved collection|queued for its full collection/.test(await status(page)), `honest note: "${(await status(page)).slice(-62)}"`);
 });
 
 scenario("slow copy: browse live at once, copy joins later without yanking a search", async b => {

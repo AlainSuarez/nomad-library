@@ -141,8 +141,9 @@ function checkUrl(r) {
       "Aspen Discovery": `https://${host}/Search/Results?lookfor=${q}&searchIndex=Keyword&searchSource=local`,
       "Evergreen": `https://${host}/eg/opac/results?query=${q}&qtype=keyword`,
       "Koha": `https://${host}/cgi-bin/koha/opac-search.pl?q=${q}`,
+      "Sierra Encore": `https://${host}/iii/encore/search/C__S${q}__Orightresult__U?lang=eng&suite=cobalt`,
     }[g.vendor];
-    return direct || `https://www.google.com/search?q=${q}+site%3A${encodeURIComponent(host)}`;
+    return direct || `https://${host}/`;       // a library's own catalog beats a web search, even if we cannot pre-fill the title
   }
   return "https://www.google.com/search?q=" + encodeURIComponent(`${r.title} ${g.name || S.libName} ${g.city || ""} ${g.st || ""} library catalog`.replace(/\s+/g, " "));
 }
@@ -1132,7 +1133,7 @@ async function loadLibs() {
   })();
   return LIBS;
 }
-let sugg = [], suggAt = -1;
+let sugg = [], suggAt = -1, suggFor = "";
 const place = e => [e[1], e[2]].filter(Boolean).join(", ");
 function rank(q) {
   const words = fold(q).trim().split(/\s+/).filter(Boolean);
@@ -1147,6 +1148,7 @@ function rank(q) {
 }
 function suggest() {
   const raw = $("#pickInput").value, box = $("#libList");
+  suggFor = raw;
   $("#nope").hidden = true;
   if (!raw.trim() || !DIR || /[./]/.test(raw)) { box.hidden = true; $("#pickInput").setAttribute("aria-expanded", "false"); sugg = []; return; }
   sugg = rank(raw);
@@ -1175,6 +1177,7 @@ document.addEventListener("click", e => { if (!e.target.closest("#pickForm")) $(
 // A library from the list: open it if we can show it, otherwise say so kindly and count the request.
 function pickEntry(e) {
   if (!e) return;
+  $("#pickInput").value = e[0];
   if (e[4]) return chooseLibrary(e[4]);
   showUnconnected({ name: e[0], city: e[1], st: e[2] });
 }
@@ -1191,7 +1194,12 @@ function requestLibrary(info) {
     .then(r => { if (r.ok) try { localStorage.setItem("nl-req-" + key, String(Date.now())); } catch {} }).catch(() => sentRequests.delete(key));
 }
 let nopeInfo = null;
-function enterGuest(info) {
+// Catalog addresses we know for libraries we cannot read yet (added by hand as visitors tell us), keyed "Name|ST".
+let CATALOGS = null;
+const loadCatalogs = () => (CATALOGS ||= fetch("/catalogs.json").then(r => r.json()).catch(() => ({})));
+async function enterGuest(info) {
+  const known = (await loadCatalogs())[`${info.name}|${info.st || ""}`];
+  if (known) info = { ...info, host: info.host || known.host, vendor: info.vendor || known.vendor };
   S.guest = { name: info.name || "your library", city: info.city || "", st: info.st || "", host: info.host || "", vendor: info.vendor || "" };
   S.lib = GUEST; S.libName = S.guest.name; S.demo = true; S.shelf = "all"; S.sort = "top"; clearFilter("all"); S.fmt = "all";
   toastDismissed = "";
@@ -1289,8 +1297,9 @@ $("#pickForm").onsubmit = async e => {
   if (!v) return;
   if (/[./]/.test(v)) return chooseLibrary(v);                       // a web address: we look for the rest
   await loadLibs();
-  const list = sugg.length ? sugg : rank(v);
-  if (list.length) return pickEntry(list[Math.max(0, suggAt)]);       // the highlighted library, or the best match for what was typed
+  const fresh = suggFor === $("#pickInput").value;                      // the list on screen was made from the text now in the box
+  const list = fresh && sugg.length ? sugg : rank(v);
+  if (list.length) return pickEntry(list[fresh ? Math.max(0, suggAt) : 0]);   // the highlighted library, or the best match for what was typed
   $("#pickErr").textContent = "We couldn't find that. Try just your town, or paste your library's website.";
 };
 $("#trySeattle").onclick = () => chooseLibrary("seattle", true);

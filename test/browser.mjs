@@ -55,6 +55,7 @@ const DIR_DEFAULT = [
   ["New York Public Library", "New York", "NY", 8800000, "nypl"],
   ["Roxbury Public Library", "Succasunna", "NJ", 22950, 0], ["Roxbury Library Association", "Roxbury", "NY", 2247, 0], ["Roxbury Free Public Library", "Roxbury", "VT", 1030, 0],
   ["Denville Free Public Library", "Denville", "NJ", 17107, 0], ["Free Library of Philadelphia", "Philadelphia", "PA", 1603797, 0],
+  ["Robeson County Public Library", "Lumberton", "NC", 130000, 0], ["Malden Public Library", "Malden", "MA", 60000, 0],
 ];
 const TYPED = { alpha: "Alpha Public", beta: "Beta Public", gamma: "Gamma Public", bclsnj: "Burlington County", chipublib: "Chicago Public", seattle: "Seattle Public", sfpl: "San Francisco", aclibrary: "Alameda County", aapld: "Algonquin", nypl: "New York Public" };
 
@@ -456,29 +457,39 @@ scenario("a library we cannot read yet: browse the nationwide shelf and check ti
   const { page } = await newPage(b, W);
   await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#pickInput", { visible: true });
-  await page.type("#pickInput", "denville nj"); await page.waitForFunction(() => /Denville Free/.test(document.querySelector("#libList")?.textContent || "")); await page.keyboard.press("Enter");
+  await page.type("#pickInput", "roxbury library association"); await page.waitForFunction(() => /Roxbury Library Association/.test(document.querySelector("#libList")?.textContent || "")); await page.keyboard.press("Enter");
   await page.waitForSelector("#nope:not([hidden])");
+  ok(/Roxbury Library Association/.test(await page.$eval("#pickInput", e => e.value)), "picking a library fills the search box with its name");
   ok(/Browse movies here, then check any of them at your library/.test(await page.$eval("#nopeText", e => e.textContent)), "the screen offers movies right away");
   const t0 = Date.now(); await page.click("#nopeBrowse"); await waitCards(page, 12);
   note("guest mode: tap Browse movies -> first movies (ms)", Date.now() - t0);
-  ok(/Denville Free Public Library/.test(await page.$eval("#libBtn", e => e.textContent)), "header names the visitor's library");
+  ok(/Roxbury Library Association/.test(await page.$eval("#libBtn", e => e.textContent)), "header names the visitor's library");
   const st = await status(page); ok(/\d[\d,]* titles/.test(st), `a real nationwide shelf: "${st.trim().slice(0, 40)}"`);
   ok((await page.$$("#grid .avail")).length === 0, "no on-the-shelf / all-out labels (we cannot know)");
   ok(!/DVD|Blu-ray/.test((await page.$$eval("#grid .meta", e => e.slice(0, 20).map(x => x.textContent))).join(" ")), "no format shown either");
   ok(await page.$eval("#fmt", e => getComputedStyle(e).display === "none"), "the Both / Blu-ray / DVD / Games switch is hidden");
   const card = await page.$eval("#copyToast", e => e.textContent).catch(() => "");
-  ok(/Browsing movies for Denville Free Public Library/.test(card) && /Check at Denville Free Public Library/.test(card), `corner card explains it once: "${card.slice(0, 80)}"`);
+  ok(/Browsing movies for Roxbury Library Association/.test(card) && /Check at Roxbury Library Association/.test(card), `corner card explains it once: "${card.slice(0, 80)}"`);
   await page.click("#filtBtn"); await sleep(200);
   ok(!(await page.$("#onShelfF")), "the filters have no 'On the shelf now' toggle");
   await page.evaluate(() => document.querySelector("#filters").close()); await sleep(500);
   await page.click("#grid .card .cover"); await sleep(400);
   const d = await page.$eval("#detailBody", e => ({ links: [...e.querySelectorAll("a")].map(a => [a.textContent.trim(), a.href]), text: e.textContent, title: e.querySelector("h2").textContent }));
   const check = d.links.find(l => /^Check at/.test(l[0]));
-  ok(check && check[0] === "Check at Denville Free Public Library", `detail has the button: "${check?.[0]}"`);
-  ok(check && /google\.com\/search/.test(check[1]) && check[1].includes(encodeURIComponent(d.title)) && /Denville/.test(decodeURIComponent(check[1])), "with no library address known it searches the title + library name + town");
+  ok(check && check[0] === "Check at Roxbury Library Association", `detail has the button: "${check?.[0]}"`);
+  ok(check && /google\.com\/search/.test(check[1]) && check[1].includes(encodeURIComponent(d.title)) && /Roxbury/.test(decodeURIComponent(check[1])), "with no library address known it searches the title + library name + town");
   ok(!/Place a hold|Get in line|On the shelf|All checked out/.test(d.text), "no hold button and no shelf status");
   ok(d.links.some(l => /Trailer/.test(l[0])) && d.links.some(l => /IMDb/.test(l[0])), "trailer and IMDb are still there");
   ok(W.searchReqs.length === 0 && W.availReqs.length === 0 && W.wants.length === 0 && W.oldSnapCalls === 0, "no live search, availability, copy request or old snapshot call");
+  // libraries whose catalog address we know go straight to it, no web search
+  for (const [typed, expectStart] of [["robeson county", "https://robeson.nccardinal.org/eg/opac/results?query="], ["denville nj", "https://denville.aspendiscovery.org/Search/Results?lookfor="], ["malden", "https://find.minlib.net/iii/encore/search/C__S"], ["free library of philadelphia", "https://catalog.freelibrary.org/"]]) {
+    await page.evaluate(() => document.querySelector("#detail").close()).catch(() => {}); await sleep(500);
+    await page.evaluate(() => document.querySelector("#libBtn").click()); await page.waitForSelector("#pickInput", { visible: true });
+    await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", typed); await page.waitForSelector("#libList li[data-i]"); await page.keyboard.press("Enter");
+    await page.waitForSelector("#nope:not([hidden])"); await page.click("#nopeBrowse"); await waitCards(page, 12); await page.click("#grid .card .cover"); await sleep(400);
+    const href = await page.$eval("#detailBody", e => [...e.querySelectorAll("a")].find(a => /^Check at/.test(a.textContent))?.href);
+    ok(href && href.startsWith(expectStart) && !/google/.test(href), `${typed}: the button goes straight to the library's own catalog (${href?.slice(0, 80)})`);
+  }
   // paste the library's website once on the kind screen: the button now goes straight to that library's search
   await page.evaluate(() => document.querySelector("#detail").close()); await sleep(500);
   await page.evaluate(() => document.querySelector("#libBtn").click()); await page.waitForSelector("#pickInput", { visible: true });

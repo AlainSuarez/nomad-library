@@ -1,0 +1,7 @@
+{
+  "Robeson County Public Library|NC": { "host": "robeson.nccardinal.org", "vendor": "Evergreen" },
+  "Roxbury Public Library|NJ": { "host": "roxbury.aspendiscovery.org", "vendor": "Aspen Discovery" },
+  "Denville Free Public Library|NJ": { "host": "denville.aspendiscovery.org", "vendor": "Aspen Discovery" },
+  "Free Library of Philadelphia|PA": { "host": "catalog.freelibrary.org", "vendor": "" },
+  "Malden Public Library|MA": { "host": "find.minlib.net", "vendor": "Sierra Encore" }
+}

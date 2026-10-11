@@ -312,6 +312,7 @@ async function liveMore(my = run, fillPages = 0) {
     });
     const localFilters = S.onShelf || S.plat || S.minR || S.y0 || S.y1;
     $("#status").innerHTML = esc(d.total ? (localFilters ? `${$("#grid").children.length.toLocaleString()} matches loaded · ${d.total.toLocaleString()} catalog results` : `${d.total.toLocaleString()} titles`) : "Nothing here at this library.") + liveNote();
+    paintCopyToast();
     $("#more").textContent = page < pages ? "Loading more…" : (d.total ? "That's the whole shelf." : "");
   } catch (e) {
     failed = true;
@@ -471,13 +472,13 @@ function wantCopy(lib) {
       try { localStorage.setItem("nl-want-" + lib, String(Date.now())); } catch {}
       if (SNAP?.lib === lib && SNAP.queueFailed) {
         SNAP.queueFailed = false;
-        const note = $("#snapNote"); if (note) note.innerHTML = copyProgressNote(SNAP);
+        paintCopyToast();
       }
     }).catch(() => {
       wantSent.delete(lib);
       if (SNAP?.lib === lib && !SNAP.ver) {
         SNAP.queueFailed = true;
-        const note = $("#snapNote"); if (note) note.textContent = copyNote(SNAP);
+        paintCopyToast();
       }
     });
 }
@@ -504,23 +505,38 @@ function loadSnap() {
   snapping = { lib, p };
   return p;
 }
-const copyNote = snap => snap.queueFailed ? "You can browse live results. We couldn't queue the full collection yet and will try again." : snap.loading ? "Opening your library. You can browse live results while we check for the full collection." : snap.why === "error" ? "Couldn't reach the saved collection. You can still browse live results." : "Your library is queued for its full collection. You can browse now. Preparation may take several hours or longer, depending on its size and demand.";
-const readyNote = () => 'Your full collection is ready. <button class="link" id="openReadyCopy">Open full collection</button>';
+const FILLING = "Your library's filling in. You can browse while we prepare the full collection.";
+const copyNote = snap => snap.queueFailed ? "You can browse now. We couldn't queue the full collection yet and will try again." : snap.why === "error" ? "Couldn't reach the saved collection. You can still browse live results." : FILLING;
+const readyNote = () => 'Your full collection is ready. <button class="link" id="openReadyCopy">Open it</button>';
 function copyProgressNote(snap) {
   if (LATE?.lib === snap.lib) return readyNote();
   if (snap.queueFailed) return esc(copyNote(snap));
   const p = snap.progress;
   if (!p) return esc(copyNote(snap));
   if (/fail|stuck|blocked|waiting/.test(p.state || ""))
-    return 'Full collection delayed. You can keep browsing live results.';
-  if (p.state === "copied") return 'Finishing your full collection. You can keep browsing now.';
+    return "Your library's full collection is delayed. You can keep browsing.";
+  if (p.state === "copied") return 'Finishing your full collection. You can keep browsing.';
   if (p.state !== "in progress") return esc(copyNote(snap));
   const done = Number(p.pagesDone) || 0, total = Number(p.pagesKnown) || 0;
   const known = p.formatsKnown === 3 && total > 0;
   const count = known ? `${Math.min(99, Math.floor(done / total * 100))}% collected` : `${done.toLocaleString()} catalog pages collected`;
-  return `<progress class="copy-progress" aria-label="Full collection progress" ${known ? `max="${total}" value="${Math.min(done, total)}"` : ""}></progress> ${count}. You can browse now. Progress updates about every 15 minutes.`;
+  return `${esc(copyNote(snap))}<div class="ct-prog"><progress class="copy-progress" aria-label="Full collection progress" ${known ? `max="${total}" value="${Math.min(done, total)}"` : ""}></progress> ${count}</div>`;
 }
-const liveNote = () => SNAP?.building && SNAP.lib === S.lib && !S.coll && !liveQ ? ` <span class="dim">· <span id="snapNote">${copyProgressNote(SNAP)}</span></span>` : "";
+const liveNote = () => "";    // the message lives in the corner card now (paintCopyToast), not in the status line
+
+// A small card in the lower right while a library is filling in; it turns into "ready" when the copy arrives.
+let toastDismissed = "";
+function paintCopyToast() {
+  const el = document.getElementById("copyToast");
+  const lib = S.lib, ready = !!lib && LATE?.lib === lib;
+  const here = !!lib && !$("#shelf").hidden && !$("#browse").hidden && SNAP?.lib === lib && !SNAP.ver;
+  const show = here && (ready || (SNAP.building && !SNAP.loading && toastDismissed !== lib));
+  if (!show) { if (el) el.remove(); return; }
+  const card = el || Object.assign(document.createElement("div"), { id: "copyToast", className: "copy-toast" });
+  card.setAttribute("role", "status"); card.setAttribute("aria-live", "polite");
+  card.innerHTML = `<div class="ct-body">${copyProgressNote(SNAP)}</div><button class="ct-x" data-ct-close aria-label="Dismiss">\u00d7</button>`;
+  if (!el) document.body.append(card);
+}
 async function readCopyProgress(lib) {
   try {
     const r = await fetch(SNAP_BASE + "status.json", { cache: "no-cache", signal: AbortSignal.timeout(8000) });
@@ -528,7 +544,7 @@ async function readCopyProgress(lib) {
     const d = await r.json();
     if (S.lib !== lib || SNAP?.lib !== lib || !SNAP.building) return;
     SNAP.progress = d.libraries?.[lib] || null;
-    const note = $("#snapNote"); if (note) note.innerHTML = copyProgressNote(SNAP);
+    paintCopyToast();
   } catch { /* progress is optional; the shelf stays usable */ }
 }
 function openCopy(lib) {
@@ -538,8 +554,8 @@ function openCopy(lib) {
     const mine = v => { if (lib === S.lib) SNAP = v; return v; };       // never let a library the visitor left replace the current one
     const live = (why, extra = {}) => {
       const v = mine({ lib, building: true, why, at: Date.now(), ...extra });
-      const n = $("#snapNote"); if (n && lib === S.lib && settled) n.textContent = copyNote(v);
       settle(v);
+      paintCopyToast();
     };
     const arrive = d => {
       if (lib !== S.lib) { settle(null); return; }
@@ -547,6 +563,7 @@ function openCopy(lib) {
       if (!settled) { clearTimeout(timer); settle(mine(snap)); return; }
       // the shelf is already showing live results: hold the copy until the next reload so a search or scroll is never yanked
       LATE = { lib, snap };
+      paintCopyToast();
       if (!$("#q").value.trim() && !liveQ && !S.coll && !document.querySelector("dialog[open]")) reload();
     };
     const timer = setTimeout(() => live("loading", { loading: true }), LIVE_AFTER_MS);
@@ -580,8 +597,7 @@ async function checkPendingCopy() {
     idbPut(lib, d);
     if (S.lib !== lib || !SNAP?.building) return;
     LATE = { lib, snap: buildSnap(lib, d) };
-    const note = $("#snapNote");
-    if (note) note.innerHTML = readyNote();
+    paintCopyToast();
   } catch { /* keep live browsing; a later check can recover */ }
   finally { checkingCopy = false; }
 }
@@ -648,6 +664,7 @@ async function reload() {
     await loadSnap();
     if (S.lib !== lib) return;      // switched libraries while waiting: the newer reload owns the screen
   }
+  paintCopyToast();
   if (instant()) return snapRender();
   // live mode: while no copy is ready, for collections, and for whole-catalog searches
   S.shelf = S.fmt === "games" ? "all" : S.coll || (GENRES.find(g => g[0] === S.genre)?.[2]) || "all";
@@ -740,7 +757,7 @@ $("#filtBody").addEventListener("input", e => {
 $("#filters").addEventListener("close", () => { liveQ = false; reload(); });
 $("#filtBtn").onclick = openFilters;
 $("#active").addEventListener("click", e => { const b = e.target.closest("[data-clear]"); if (b) { clearFilter(b.dataset.clear); save(); reload(); } });
-document.addEventListener("click", e => { if (e.target.id === "wholeCat") { liveQ = true; reload(); } else if (e.target.id === "retryMore") { $("#more").textContent = "Loading more…"; liveMore(); } else if (e.target.id === "openReadyCopy") { reload(); } });
+document.addEventListener("click", e => { if (e.target.id === "wholeCat") { liveQ = true; reload(); } else if (e.target.id === "retryMore") { $("#more").textContent = "Loading more…"; liveMore(); } else if (e.target.id === "openReadyCopy") { reload(); } else if (e.target.closest?.("[data-ct-close]")) { toastDismissed = S.lib; paintCopyToast(); } });
 
 // ---- favorites and watchlist tabs ------------------------------------------------
 
@@ -1059,6 +1076,7 @@ function setTab(tab) {
   for (const id of ["browse", "faves", "watch"]) $("#" + id).hidden = id !== tab;
   if (tab === "faves") showFaves();
   if (tab === "watch") showWatch();
+  paintCopyToast();
 }
 
 function paintControls() {
@@ -1152,6 +1170,7 @@ function showHome(fromPop) {
   if (S.lib) $("#resume").textContent = `Back to ${S.libName || S.lib}`;
   $("#pickInput").value = ""; $("#pickErr").textContent = "";
   window.scrollTo(0, 0);
+  paintCopyToast();
 }
 
 function boot(fromPop) {

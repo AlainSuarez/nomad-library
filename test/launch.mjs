@@ -64,20 +64,20 @@ await test('live filters exclude wrong years, low ratings, unavailable titles, a
 });
 await test('an open page discovers a completed copy without replacing active browsing', async () => {
   const code = app.slice(app.indexOf('let checkingCopy = false;'), app.indexOf('setInterval(checkPendingCopy'));
-  const note = { innerHTML: '' }; let saved = 0;
+  let saved = 0, painted = 0;
   const context = vm.createContext({ document: { visibilityState: 'visible' }, SNAP: { lib: 'austin', building: true }, S: { lib: 'austin' }, LATE: null,
     fetchStatic: async () => ({ d: { rows: [], finished: 1 } }), idbPut: () => { saved++; }, buildSnap: (lib, d) => ({ lib, ver: d.finished }),
-    $: () => note, readyNote: () => 'Open full collection', wantCopy: () => {},
+    $: () => null, paintCopyToast: () => { painted++; }, readyNote: () => 'Open full collection', wantCopy: () => {},
   });
   vm.runInContext(code, context);
   await context.checkPendingCopy();
-  assert.equal(context.LATE.lib, 'austin'); assert.equal(context.SNAP.building, true); assert.equal(saved, 1); assert.match(note.innerHTML, /Open full collection/);
+  assert.equal(context.LATE.lib, 'austin'); assert.equal(context.SNAP.building, true); assert.equal(saved, 1); assert.equal(painted, 1, 'the corner card is refreshed to say the copy is ready');
 });
 await test('a completed copy from the previous library cannot overwrite a new library', async () => {
   const code = app.slice(app.indexOf('let checkingCopy = false;'), app.indexOf('setInterval(checkPendingCopy'));
   let resolve;
   const context = vm.createContext({ document: { visibilityState: 'visible' }, SNAP: { lib: 'austin', building: true }, S: { lib: 'austin' }, LATE: null,
-    fetchStatic: () => new Promise(r => { resolve = r; }), idbPut: () => {}, buildSnap: () => { throw Error('stale result applied'); }, $: () => null, wantCopy: () => {},
+    fetchStatic: () => new Promise(r => { resolve = r; }), idbPut: () => {}, buildSnap: () => { throw Error('stale result applied'); }, $: () => null, paintCopyToast: () => {}, wantCopy: () => {},
   });
   vm.runInContext(code, context);
   const pendingCopy = context.checkPendingCopy(); context.S.lib = 'seattle'; resolve({ d: { finished: 1 } }); await pendingCopy;

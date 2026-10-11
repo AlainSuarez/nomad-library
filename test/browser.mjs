@@ -256,7 +256,15 @@ scenario("uncopied library: live shelf quickly, one 'wanted' note, no loops", as
   note("uncopied library first live shelf (ms)", Date.now() - t0);
   ok(Date.now() - t0 < 3500, `live shelf starts promptly (${Date.now() - t0} ms)`);
   await sleep(600);
-  ok(/queued for its full collection/.test(await status(page)), `honest note, no promise of a date: "${(await status(page)).slice(-70)}"`);
+  const toast = await page.$eval("#copyToast", e => ({ text: e.textContent, r: e.getBoundingClientRect().toJSON(), vw: innerWidth, vh: innerHeight })).catch(() => null);
+  ok(toast && /library's filling in\. You can browse while we prepare the full collection/.test(toast.text), `corner card says it: "${toast?.text.slice(0, 90)}"`);
+  ok(toast && toast.r.right > toast.vw - 40 && toast.r.bottom > toast.vh - 40 && toast.r.right <= toast.vw, `card sits in the lower right (right ${Math.round(toast?.r.right)} of ${toast?.vw}, bottom ${Math.round(toast?.r.bottom)} of ${toast?.vh})`);
+  ok(!/filling in/.test(await status(page)) && /^\d+ titles/.test((await status(page)).trim()), `status line is just the count: "${(await status(page)).trim()}"`);
+  ok(!/\d{3,} (hours|minutes)|tomorrow/.test(toast?.text || ""), "no promised time");
+  await page.click("#copyToast [data-ct-close]"); await sleep(150);
+  ok(!(await page.$("#copyToast")), "dismiss closes the card");
+  await page.evaluate(() => document.querySelector("#sort").dispatchEvent(new Event("change", { bubbles: true }))); await sleep(900);
+  ok(!(await page.$("#copyToast")), "it stays dismissed for this library while browsing");
   ok(W.wants.length === 1 && W.wants[0] === "beta", `registered once (${W.wants.length})`);
   const before = W.snapReqs.length;
   await sleep(2500);
@@ -277,7 +285,8 @@ scenario("copy host unreachable on a first visit: live shelf, registered once, n
   await sleep(2500);
   ok(W.wants.length === 1 && W.wants[0] === "gamma", `registered once despite a transient failure (${W.wants.length})`);
   ok(W.snapReqs.length === 1, `one attempt, not a retry loop (${W.snapReqs.length} requests)`);
-  ok(/Couldn't reach the saved collection|queued for its full collection/.test(await status(page)), `honest note: "${(await status(page)).slice(-62)}"`);
+  const tt = await page.$eval("#copyToast", e => e.textContent).catch(() => "");
+  ok(/Couldn't reach the saved collection/.test(tt), `corner card is honest: "${tt.slice(0, 70)}"`);
 });
 
 scenario("slow copy: browse live at once, copy joins later without yanking a search", async b => {
@@ -289,7 +298,7 @@ scenario("slow copy: browse live at once, copy joins later without yanking a sea
   ok(Date.now() - t0 < 3500, `live shelf shown before the slow copy (${Date.now() - t0} ms)`);
   ok((await titles(page))[0].includes("Live"), "showing live results");
   await page.waitForFunction(() => /6,000 titles|\d,\d{3} titles/.test(document.querySelector("#status").textContent) && !document.querySelector("#grid .card").textContent.includes("Live"), { timeout: 12000 });
-  ok(true, "switched to the instant copy once it arrived (no search was active)");
+  ok(!(await page.$("#copyToast")), "switched to the instant copy once it arrived (no search was active), and the card is gone");
   // second half: an active search must not be replaced
   const W2 = world({ snap: { beta: { body: snapBody(makeRows("beta", 6000)), delay: 5000 } } });
   const p2 = (await newPage(b, W2)).page;
@@ -300,6 +309,11 @@ scenario("slow copy: browse live at once, copy joins later without yanking a sea
   await sleep(6000);
   const after = await titles(p2);
   ok(JSON.stringify(before) === JSON.stringify(after) && (await p2.$eval("#q", e => e.value)) === "Live 3", "an active search is left alone when the copy arrives");
+  const ready = await p2.$eval("#copyToast", e => e.textContent).catch(() => "");
+  ok(/ready/.test(ready) && /Open it/.test(ready), `a ready card appears instead (${ready.slice(0, 50)})`);
+  await p2.$eval("#q", e => { e.value = ""; e.dispatchEvent(new Event("input", { bubbles: true })); }); await sleep(300);
+  await p2.click("#openReadyCopy"); await p2.waitForFunction(() => /\d,\d{3} titles/.test(document.querySelector("#status").textContent), { timeout: 8000 });
+  ok(!(await p2.$("#copyToast")), "opening the full collection removes the card");
 });
 
 scenario("bad static data: corrupt, wrong shape, HTML 200, truncated gzip all fall back to live and are never saved", async b => {
@@ -413,7 +427,13 @@ scenario("narrow phone layout: no sideways scrolling on home, shelf, detail", as
   await page.click("#grid .card"); await sleep(500);
   const d = await page.$eval("#detail", e => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, w: innerWidth }; });
   ok(d.l >= -1 && d.r <= d.w + 1, `detail sheet fits the screen (${Math.round(d.l)}..${Math.round(d.r)} of ${d.w})`);
-  try { await page.screenshot({ path: path.join(os.tmpdir(), "nl-mobile-detail.png") }); } catch {}
+  await page.evaluate(() => document.querySelector("#detail").close()); await sleep(500);   // closing a dialog triggers a delayed history.back()
+  await page.evaluate(() => document.querySelector("#libBtn").click());
+  await page.waitForSelector("#pickInput", { visible: true }); await page.type("#pickInput", "beta"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
+  await page.waitForSelector("#copyToast", { timeout: 8000 });
+  const m = await page.$eval("#copyToast", e => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, b: r.bottom, w: innerWidth, h: innerHeight }; });
+  ok(m.l >= 0 && m.r <= m.w && m.b <= m.h, `corner card fits a phone screen (${Math.round(m.l)}..${Math.round(m.r)} of ${m.w})`);
+  try { await page.screenshot({ path: path.join(os.tmpdir(), "nl-mobile-toast.png") }); } catch {}
 });
 
 // ---- run ------------------------------------------------------------------------------------------------

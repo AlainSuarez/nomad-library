@@ -249,3 +249,5 @@ img { max-width: 100%; }
 }
 .sheet::backdrop { background: rgba(8, 18, 23, .72); }
 @media (max-width: 640px) { .code { font-size: 18px; letter-spacing: .04em; white-space: nowrap; padding: 14px 8px; } }
+/* Published catalog progress is read by the visitor's browser from static files. */
+.copy-progress { width: 5rem; height: .45rem; margin-right: .35rem; vertical-align: middle; accent-color: var(--stamp); }

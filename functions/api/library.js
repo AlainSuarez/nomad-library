@@ -13,7 +13,7 @@ async function fromWebsite(input) {
   try { host = new URL(url).hostname; } catch { return null; }
   if (!/\.[a-z]{2,}$/i.test(host)) return null;
   try {
-    const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "text/html" }, redirect: "follow", cf: { cacheTtl: 86400 } });
+    const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "text/html" }, redirect: "follow", cf: { cacheTtl: 86400 }, signal: AbortSignal.timeout(10000) });
     if (r.url && /\.bibliocommons\.com/i.test(r.url)) return slugFrom(r.url);
     const html = (await r.text()).slice(0, 400000);
     const counts = {};

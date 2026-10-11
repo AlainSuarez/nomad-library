@@ -24,6 +24,14 @@ export const SHELVES = {
   western:   { q: "western films", st: "subject" },
   war:       { q: "war films", st: "subject" },
   musical:   { q: "musical films", st: "subject" },
+  crime:     { q: "crime films", st: "subject" },
+  drama:     { q: "drama", st: "subject" },
+  fantasy:   { q: "fantasy films", st: "subject" },
+  romance:   { q: "romance films", st: "subject" },
+  superhero: { q: "superhero films", st: "subject" },
+  biography: { q: "biographical films", st: "subject" },
+  history:   { q: "historical films", st: "subject" },
+  sports:    { q: "sports films", st: "subject" },
   tv:        { q: "television programs", st: "subject" },
 };
 const FMT = { all: "DVD|BLURAY", br: "BLURAY", dvd: "DVD", games: "VIDEO_GAME" };
@@ -56,13 +64,18 @@ export async function onRequestGet(ctx) {
   const shelfKey = SHELVES[u.searchParams.get("shelf")] ? u.searchParams.get("shelf") : "all";
   const shelf = q ? { q, st: "keyword" } : SHELVES[shelfKey];
   const sortKey = u.searchParams.get("sort") || "";
-  const page = Math.max(1, Math.min(400, +u.searchParams.get("page") || 1));
+  const page = Math.max(1, Math.min(10000, Math.floor(+u.searchParams.get("page") || 1)));
 
-  const { ok, status, d } = await gw(ctx, path(lib, shelf, fmt, page, SORTS[sortKey]), 1800);
+  const gatewayPath = path(lib, shelf, fmt, page, SORTS[sortKey]);
+  const cacheKey = new Request(`${u.origin}/__catalog-search-v2/${encodeURIComponent(gatewayPath)}`);
+  const cached = await caches.default.match(cacheKey);
+  if (cached) return cached;
+  const { ok, status, d } = await gw(ctx, gatewayPath, 1800);
   if (!ok) return json({ error: status === 404 ? "That library wasn't found." : "The library's catalog didn't answer. Try again in a minute." }, { status: 502 });
   const pg = d.catalogSearch?.pagination || {};
   const rows = rowsOf(lib, d).map(({ id, b }) => shape(lib, id, b));
-  return json({ total: pg.count || 0, page, pages: pg.pages || 1, rows },
+  const response = json({ total: pg.count || 0, page, pages: pg.pages || 1, rows },
     { headers: { "cache-control": "public, max-age=300" } });
+  ctx.waitUntil(caches.default.put(cacheKey, response.clone()));
+  return response;
 }
-

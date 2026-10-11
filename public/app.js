@@ -105,8 +105,8 @@ async function rate(rows) {
 const BUSY = "Nomad Library is extra busy right now. Please try again in a little while.";
 async function api(path, opts) {
   let r;
-  try { r = await fetch(path, opts); }
-  catch { throw Object.assign(new Error("You seem to be offline. Check your connection and try again."), { data: {} }); }
+  try { r = await fetch(path, { signal: AbortSignal.timeout(20000), ...opts }); }
+  catch (e) { throw Object.assign(new Error(e.name === "TimeoutError" ? "That request took too long. Please try again." : "You seem to be offline. Check your connection and try again."), { data: {} }); }
   const d = await r.json().catch(() => null);
   if (!d) throw Object.assign(new Error(r.status >= 500 || r.status === 429 ? BUSY : "Something went wrong. Try again."), { data: {}, status: r.status });
   if (!r.ok) {
@@ -188,7 +188,7 @@ function openDetail(r) {
         <h2>${esc(r.title)}</h2>
         ${r.sub ? `<p class="sub">${esc(r.sub)}</p>` : ""}
         <div class="facts">${r.f === "g" ? esc(r.plat || "") || yearNote : yearNote} · ${esc(fmtLabel)}${r.r ? ` · <b>★ ${r.r.toFixed(1)}</b> from ${Number(r.v).toLocaleString()} votes` : ""}<br><span id="liveAv">${av}</span></div>
-        ${r.desc ? `<p>${esc(r.desc)}</p>` : ""}
+        <p id="detailSynopsis">${r.desc ? esc(r.desc) : `<a href="${esc(r.url)}" target="_blank" rel="noopener">Read the synopsis at your library</a>`}</p>
         ${r.eds && r.eds.length > 1 ? `<div class="facts">${r.eds.map(e => `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.fmt)}${e.disc ? ` (${e.disc})` : ""}</a>: ${e.avail ? `<b style="color:var(--ok)">${e.copies} in</b>` : `all out${e.holds ? `, ${e.holds} holds` : ""}`}`).join("<br>")}</div>` : ""}
         <div class="actions">
           <a class="btn" href="${esc((r.eds?.find(e => e.avail) || r).url)}" target="_blank" rel="noopener">${r.avail ? "Place a hold" : "Get in line"}</a>
@@ -199,11 +199,25 @@ function openDetail(r) {
       </div>
     </div></div>`;
   $("#detail").showModal();
+  const detailLib = S.lib;
+  if (!r.desc && r.f !== "g") {
+    const p = new URLSearchParams({ lib: detailLib, q: r.title, fmt: "all", page: "1" });
+    api("/api/search?" + p).then(d => {
+      const ids = new Set((r.eds || [r]).map(e => e.id));
+      const match = d.rows.find(row => ids.has(row.id) && row.desc);
+      if (!match) return;
+      r.desc = match.desc;
+      if ($("#detail").open && S.lib === detailLib && $("#detailBody").dataset.record === r.id)
+        $("#detailSynopsis").textContent = r.desc;
+    }).catch(() => {});
+  }
+  $("#detailBody").dataset.record = r.id;
   liveStatus(r);
 }
 
 // The weekly copy can't know what's on the shelf right now, so the movie page asks the library.
 async function liveStatus(r) {
+  const lib = S.lib;
   const eds = r.eds || [r];
   try {
     const d = await api(`/api/avail?lib=${encodeURIComponent(S.lib)}&ids=${eds.slice(0, 6).map(e => e.id).join(",")}`);
@@ -211,7 +225,7 @@ async function liveStatus(r) {
     for (const e of eds) { const a = d[e.id]; if (!a) continue; Object.assign(e, a); any = any || a.avail; copies += a.copies; total += a.total; holds += a.holds; }
     if (!Object.keys(d).length) return;
     Object.assign(r, { avail: any, copies, total, holds });
-    if (!$("#detail").open) return;
+    if (!$("#detail").open || S.lib !== lib || $("#detailBody").dataset.record !== r.id) return;
     const el = $("#liveAv");
     if (el) el.innerHTML = any ? `<b style="color:var(--ok)">On the shelf right now</b> · ${copies} of ${total} in`
       : `<b style="color:var(--stamp)">All checked out right now</b>${holds ? ` · ${holds} on hold` : ""}`;
@@ -249,7 +263,15 @@ function counts() {
 
 let run = 0, page = 0, pages = 1, loading = false, topRows = null, seen = new Map();
 
-function visible(rows) { return S.onShelf ? rows.filter(r => r.avail) : rows; }
+function visible(rows) {
+  return rows.filter(r => {
+    if (S.onShelf && !r.avail) return false;
+    if (S.fmt === "games") return !S.plat || r.plat === S.plat;
+    const year = r.fy || r.disc;
+    return (!S.y0 || year >= S.y0) && (!S.y1 || (year && year <= S.y1)) &&
+      (!S.minR || (r.r >= S.minR && r.v >= 500));
+  });
+}
 
 async function liveReload() {
   const my = ++run;
@@ -261,7 +283,7 @@ async function liveReload() {
   await liveMore(my);
 }
 
-async function liveMore(my = run) {
+async function liveMore(my = run, fillPages = 0) {
   // One request at a time per view. A newer view never waits on an older one.
   if (loading === my || page >= pages || S.sort === "top") return;
   loading = my;
@@ -271,6 +293,10 @@ async function liveMore(my = run) {
     if (my !== run) return;
     page = d.page; pages = d.pages;
     remember(d.rows);
+    if (S.fmt !== "games" && (S.minR || S.y0 || S.y1)) {
+      await rate(d.rows);
+      if (my !== run) return;
+    }
     // Covers go up right away. Ratings fill in a moment later, then duplicate editions fold together.
     const shown = visible(d.rows);
     $("#grid").insertAdjacentHTML("beforeend", shown.map(cardHTML).join(""));
@@ -284,15 +310,18 @@ async function liveMore(my = run) {
         card.outerHTML = cardHTML(r);
       }
     });
-    $("#status").innerHTML = esc(d.total ? `${d.total.toLocaleString()} titles` : "Nothing here at this library.") + liveNote();
+    const localFilters = S.onShelf || S.plat || S.minR || S.y0 || S.y1;
+    $("#status").innerHTML = esc(d.total ? (localFilters ? `${$("#grid").children.length.toLocaleString()} matches loaded · ${d.total.toLocaleString()} catalog results` : `${d.total.toLocaleString()} titles`) : "Nothing here at this library.") + liveNote();
     $("#more").textContent = page < pages ? "Loading more…" : (d.total ? "That's the whole shelf." : "");
-    if (page < pages) fetch(searchUrl(page + 1)).catch(() => {});
   } catch (e) {
     failed = true;
     if (my === run) { $("#status").textContent = e.message; $("#more").innerHTML = '<button class="link" id="retryMore">Try again</button>'; }
   } finally { if (loading === my) loading = false; }
   // keep filling a short first screen, but never after a failure (that would retry forever)
-  if (!failed && my === run && page < pages && $("#grid").children.length < 12) liveMore(my);
+  if (!failed && my === run && page < pages && $("#grid").children.length < 12) {
+    if (fillPages < 2) liveMore(my, fillPages + 1);
+    else $("#more").innerHTML = '<button class="link" id="retryMore">Load more results</button>';
+  }
 }
 
 // Rank a whole shelf by IMDb rating, pulling its pages a few at a time.
@@ -330,11 +359,11 @@ async function loadTop(my) {
 
 const GENRES = [
   ["horror", "Horror", "horror"], ["comedy", "Comedy", "comedy"], ["romcom", "Rom-com", "romcom"], ["scifi", "Sci-fi", "scifi"],
-  ["action", "Action", "action"], ["thriller", "Thriller", "suspense"], ["crime", "Crime", ""], ["drama", "Drama", ""],
-  ["animation", "Animation", "animation"], ["family", "Family", "family"], ["fantasy", "Fantasy", ""], ["romance", "Romance", ""],
+  ["action", "Action", "action"], ["thriller", "Thriller", "suspense"], ["crime", "Crime", "crime"], ["drama", "Drama", "drama"],
+  ["animation", "Animation", "animation"], ["family", "Family", "family"], ["fantasy", "Fantasy", "fantasy"], ["romance", "Romance", "romance"],
   ["documentary", "Documentary", "documentary"], ["foreign", "Foreign", "foreign"], ["western", "Western", "western"],
-  ["war", "War", "war"], ["musical", "Musical", "musical"], ["superhero", "Superhero", ""], ["biography", "Biography", ""],
-  ["history", "History", ""], ["sports", "Sports", ""], ["tv", "TV shows", "tv"],
+  ["war", "War", "war"], ["musical", "Musical", "musical"], ["superhero", "Superhero", "superhero"], ["biography", "Biography", "biography"],
+  ["history", "History", "history"], ["sports", "Sports", "sports"], ["tv", "TV shows", "tv"],
 ];
 const COLLECTIONS = [["mustsee", "1001 must-sees"], ["oscar", "Oscar winners"], ["registry", "Film Registry"], ["criterion", "Criterion"], ["ghibli", "Studio Ghibli"]];
 const FMT_NAME = { b: "Blu-ray", d: "DVD", g: "Game" };
@@ -435,7 +464,22 @@ function wantCopy(lib) {
   try { last = +localStorage.getItem("nl-want-" + lib) || 0; } catch {}
   if (Date.now() - last < 864e5) return;
   fetch("/api/want", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lib }), keepalive: true })
-    .then(r => { if (r.ok) try { localStorage.setItem("nl-want-" + lib, String(Date.now())); } catch {} }).catch(() => {});
+    .then(async r => {
+      if (!r.ok) throw new Error("copy request failed");
+      const d = await r.json();
+      if (d.queued === false) throw new Error("copy queue is full");
+      try { localStorage.setItem("nl-want-" + lib, String(Date.now())); } catch {}
+      if (SNAP?.lib === lib && SNAP.queueFailed) {
+        SNAP.queueFailed = false;
+        const note = $("#snapNote"); if (note) note.innerHTML = copyProgressNote(SNAP);
+      }
+    }).catch(() => {
+      wantSent.delete(lib);
+      if (SNAP?.lib === lib && !SNAP.ver) {
+        SNAP.queueFailed = true;
+        const note = $("#snapNote"); if (note) note.textContent = copyNote(SNAP);
+      }
+    });
 }
 
 function buildSnap(lib, d) {
@@ -460,8 +504,33 @@ function loadSnap() {
   snapping = { lib, p };
   return p;
 }
-const copyNote = snap => snap.loading ? "Opening your library. You can browse live results while we check for the full collection." : snap.why === "error" ? "Couldn't reach the saved collection. You can still browse live results." : "Your library is filling in. You can browse now while we prepare the full collection. This may take several minutes to an hour or longer, depending on its size and demand.";
-const liveNote = () => SNAP?.building && SNAP.lib === S.lib && !S.coll && !liveQ ? ` <span class="dim">· <span id="snapNote">${copyNote(SNAP)}</span></span>` : "";
+const copyNote = snap => snap.queueFailed ? "You can browse live results. We couldn't queue the full collection yet and will try again." : snap.loading ? "Opening your library. You can browse live results while we check for the full collection." : snap.why === "error" ? "Couldn't reach the saved collection. You can still browse live results." : "Your library is queued for its full collection. You can browse now. Preparation may take several hours or longer, depending on its size and demand.";
+const readyNote = () => 'Your full collection is ready. <button class="link" id="openReadyCopy">Open full collection</button>';
+function copyProgressNote(snap) {
+  if (LATE?.lib === snap.lib) return readyNote();
+  if (snap.queueFailed) return esc(copyNote(snap));
+  const p = snap.progress;
+  if (!p) return esc(copyNote(snap));
+  if (/fail|stuck|blocked|waiting/.test(p.state || ""))
+    return 'Full collection delayed. You can keep browsing live results.';
+  if (p.state === "copied") return 'Finishing your full collection. You can keep browsing now.';
+  if (p.state !== "in progress") return esc(copyNote(snap));
+  const done = Number(p.pagesDone) || 0, total = Number(p.pagesKnown) || 0;
+  const known = p.formatsKnown === 3 && total > 0;
+  const count = known ? `${Math.min(99, Math.floor(done / total * 100))}% collected` : `${done.toLocaleString()} catalog pages collected`;
+  return `<progress class="copy-progress" aria-label="Full collection progress" ${known ? `max="${total}" value="${Math.min(done, total)}"` : ""}></progress> ${count}. You can browse now. Progress updates about every 15 minutes.`;
+}
+const liveNote = () => SNAP?.building && SNAP.lib === S.lib && !S.coll && !liveQ ? ` <span class="dim">· <span id="snapNote">${copyProgressNote(SNAP)}</span></span>` : "";
+async function readCopyProgress(lib) {
+  try {
+    const r = await fetch(SNAP_BASE + "status.json", { cache: "no-cache", signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (S.lib !== lib || SNAP?.lib !== lib || !SNAP.building) return;
+    SNAP.progress = d.libraries?.[lib] || null;
+    const note = $("#snapNote"); if (note) note.innerHTML = copyProgressNote(SNAP);
+  } catch { /* progress is optional; the shelf stays usable */ }
+}
 function openCopy(lib) {
   return new Promise(async resolve => {
     let settled = false;
@@ -491,7 +560,7 @@ function openCopy(lib) {
       }
       const r = await fetchStatic(lib);
       if (r.d) { idbPut(lib, r.d); arrive(r.d); return; }
-      clearTimeout(timer); wantCopy(lib); live("missing");
+      clearTimeout(timer); wantCopy(lib); live("missing"); readCopyProgress(lib);
     } catch (e) {
       clearTimeout(timer); wantCopy(lib); live("error");
     }
@@ -499,6 +568,24 @@ function openCopy(lib) {
 }
 
 const instant = () => SNAP && SNAP.lib === S.lib && SNAP.ver && !S.coll && !liveQ;
+
+let checkingCopy = false;
+async function checkPendingCopy() {
+  if (checkingCopy || document.visibilityState !== "visible" || !SNAP?.building || LATE?.lib === S.lib) return;
+  const lib = S.lib;
+  checkingCopy = true;
+  try {
+    const { d } = await fetchStatic(lib);
+    if (!d) { wantCopy(lib); await readCopyProgress(lib); return; }
+    idbPut(lib, d);
+    if (S.lib !== lib || !SNAP?.building) return;
+    LATE = { lib, snap: buildSnap(lib, d) };
+    const note = $("#snapNote");
+    if (note) note.innerHTML = readyNote();
+  } catch { /* keep live browsing; a later check can recover */ }
+  finally { checkingCopy = false; }
+}
+setInterval(checkPendingCopy, 120000);
 
 function snapFilter() {
   const q = norm($("#q").value);
@@ -653,7 +740,7 @@ $("#filtBody").addEventListener("input", e => {
 $("#filters").addEventListener("close", () => { liveQ = false; reload(); });
 $("#filtBtn").onclick = openFilters;
 $("#active").addEventListener("click", e => { const b = e.target.closest("[data-clear]"); if (b) { clearFilter(b.dataset.clear); save(); reload(); } });
-document.addEventListener("click", e => { if (e.target.id === "wholeCat") { liveQ = true; reload(); } else if (e.target.id === "retryMore") { $("#more").textContent = "Loading more…"; liveMore(); } });
+document.addEventListener("click", e => { if (e.target.id === "wholeCat") { liveQ = true; reload(); } else if (e.target.id === "retryMore") { $("#more").textContent = "Loading more…"; liveMore(); } else if (e.target.id === "openReadyCopy") { reload(); } });
 
 // ---- favorites and watchlist tabs ------------------------------------------------
 

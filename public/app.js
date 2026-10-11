@@ -460,7 +460,7 @@ function loadSnap() {
   snapping = { lib, p };
   return p;
 }
-const copyNote = snap => snap.loading ? "Getting a fast copy of this library in the background." : snap.why === "error" ? "Couldn't reach the fast copy, so this is loading live." : "This library isn't copied yet, so it loads a little slower.";
+const copyNote = snap => snap.loading ? "Opening your library. You can browse live results while we check for the full collection." : snap.why === "error" ? "Couldn't reach the saved collection. You can still browse live results." : "Your library is filling in. You can browse now while we prepare the full collection. This may take several minutes to an hour or longer, depending on its size and demand.";
 const liveNote = () => SNAP?.building && SNAP.lib === S.lib && !S.coll && !liveQ ? ` <span class="dim">· <span id="snapNote">${copyNote(SNAP)}</span></span>` : "";
 function openCopy(lib) {
   return new Promise(async resolve => {

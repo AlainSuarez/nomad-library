@@ -2,7 +2,7 @@
 """Writes the plain pages (privacy, terms, accessibility) with the site's header and footer."""
 import os
 ROOT = os.path.join(os.path.dirname(__file__), "..", "public")
-UPDATED = "October 9, 2026"
+UPDATED = "October 11, 2026"
 CONTACT = 'through the <a href="https://www.youtube.com/@NomadOverNormal/about" target="_blank" rel="noopener">Nomad Over Normal YouTube channel</a>'
 
 HEAD = """<!doctype html>
@@ -51,7 +51,7 @@ PRIVACY = f"""
 <p><b>The short version</b></p>
 <ul>
 <li>We never ask for your name, email, phone number or a password.</li>
-<li>There are no ads, no analytics and no tracking of any kind.</li>
+<li>There are no ads and no tracking. We keep one anonymous number: how many devices open the site each day.</li>
 <li>We don't sell or share anything with anyone.</li>
 <li>You can use the whole site without an account. Then nothing about you is stored on our servers.</li>
 <li>If you make an account, we keep only your library, favorites, watchlist and settings, so they follow you to other devices. You can delete all of it in one tap.</li>
@@ -71,6 +71,9 @@ PRIVACY = f"""
 <li>The dates your account was made and last updated.</li>
 </ul>
 <p>That's it. There's no email, name, location or payment information attached to an account.</p>
+
+<h2>Counting visits</h2>
+<p>Once a day, your browser tells us "a device visited." That adds 1 to a daily total so we can see how many people use the site. It sends no name, ID or cookie, and we can't tell which device it was or connect it to anything else. We also count how many accounts exist.</p>
 
 <h2>Deleting your data</h2>
 <p>Open <b>Account</b> and choose <b>Delete my account</b>. Everything above is erased right away and can't be recovered. Signing out leaves a copy of your shelf on that device until you clear your browser's data.</p>

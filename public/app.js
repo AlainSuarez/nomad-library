@@ -1205,6 +1205,18 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").cat
 
 // The shelf starts loading right away. The account check runs alongside it.
 // Every visit opens on the home page. A saved library gets a one-tap "Back to" button there.
+// One anonymous tick per device per day, so we know roughly how many people use the site. No ID, no cookie.
+function countVisit() {
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    if (localStorage.getItem("nl-day") === day) return;
+    const fresh = !localStorage.getItem("nl-seen");
+    fetch("/api/visit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ new: fresh }), keepalive: true })
+      .then(r => { if (r.ok) { localStorage.setItem("nl-day", day); localStorage.setItem("nl-seen", "1"); } }).catch(() => {});
+  } catch { /* storage unavailable: skip rather than count the same device again and again */ }
+}
+countVisit();
+
 const linked = new URLSearchParams(location.search).get("lib");
 history.replaceState({ nl: "home" }, "", "/");
 if (linked) chooseLibrary(linked, linked !== S.lib || !!S.demo);

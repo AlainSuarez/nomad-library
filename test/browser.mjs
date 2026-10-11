@@ -96,6 +96,7 @@ async function newPage(browser, W, { ctx, seedState, idbBroken, viewport } = {})
         if (p === "/api/libs") return done(200, JSON.stringify(W.libs));
         if (p === "/api/library") { const q = (u.searchParams.get("q") || "").toLowerCase(); const hit = W.libs.find(l => l[0] === q || l[1].toLowerCase() === q); return hit ? done(200, JSON.stringify({ slug: hit[0], name: hit[1] })) : done(404, JSON.stringify({ error: "not found", unsupported: true })); }
         if (p === "/api/want") { W.wants.push(JSON.parse(req.postData() || "{}").lib); return done(200, '{"ok":true}'); }
+        if (p === "/api/visit") { (W.visits ||= []).push(JSON.parse(req.postData() || "{}")); return done(200, '{"ok":true}'); }
         if (p === "/api/snap") { W.oldSnapCalls++; return done(200, '{"ver":0,"building":true}'); }
         if (p === "/api/search") {
           W.searchReqs.push(u.search);
@@ -376,6 +377,28 @@ scenario("favorites, watchlist and account state: a signed-in account's data is 
   const last = W.puts[W.puts.length - 1].data || {};
   ok(Object.keys(last.faves || {}).length >= 2 && !!last.faves["alpha:Salphac3"], `the earlier favorite is kept alongside the new one (${Object.keys(last.faves || {}).length} total)`);
   ok(!W.reqs.some(r => /delete|logout/.test(r)), "no delete or sign-out request was made");
+});
+
+scenario("visit counter: one anonymous tick per device per day, new vs returning, silent without storage", async b => {
+  const W = world({});
+  const { page, context } = await newPage(b, W);
+  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" }); await sleep(600);
+  ok(W.visits?.length === 1 && W.visits[0].new === true, `first ever visit sends one tick marked new (${JSON.stringify(W.visits)})`);
+  const body = JSON.stringify(W.visits[0]);
+  ok(body === '{"new":true}', `the tick carries nothing else (${body})`);
+  await page.reload({ waitUntil: "domcontentloaded" }); await sleep(500);
+  ok(W.visits.length === 1, "a reload the same day does not count again");
+  await page.close();
+  const p2 = (await newPage(b, W, { ctx: context })).page;
+  await p2.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" }); await sleep(500);
+  ok(W.visits.length === 1, "another tab the same day does not count again");
+  await p2.evaluate(() => localStorage.setItem("nl-day", "2000-01-01")); await p2.reload({ waitUntil: "domcontentloaded" }); await sleep(600);
+  ok(W.visits.length === 2 && W.visits[1].new === false, `next day: counted again, as a returning device (${JSON.stringify(W.visits[1])})`);
+  const W2 = world({});
+  const p3 = (await newPage(b, W2)).page;
+  await p3.evaluateOnNewDocument(() => { Object.defineProperty(window, "localStorage", { get() { throw new Error("blocked"); } }); });
+  await p3.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" }); await sleep(600);
+  ok(!(W2.visits?.length), "storage blocked: no tick at all, so no device is counted over and over");
 });
 
 scenario("narrow phone layout: no sideways scrolling on home, shelf, detail", async b => {

@@ -32,3 +32,5 @@ CREATE TABLE IF NOT EXISTS chunks (slug TEXT NOT NULL, ver INTEGER NOT NULL, seq
 ALTER TABLE libs ADD COLUMN cover TEXT;
 ALTER TABLE libs ADD COLUMN wanted INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE libs ADD COLUMN wanted_at INTEGER NOT NULL DEFAULT 0;   -- when a visitor first asked for a copy; the copier works oldest request first
+-- one row per day: how many devices opened the site (a count only, no IDs or cookies)
+CREATE TABLE IF NOT EXISTS visits (day TEXT PRIMARY KEY, devices INTEGER NOT NULL DEFAULT 0, new_devices INTEGER NOT NULL DEFAULT 0);

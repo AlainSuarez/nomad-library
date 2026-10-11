@@ -131,18 +131,33 @@ const isFav = r => !!S.faves[favKey(r)];
 const filmYear = r => r.fy || r.disc || "";
 
 const badgeHTML = r => (r.r && r.v >= 50 ? `<span class="badge"><b>★</b> ${r.r.toFixed(1)}</span>` : "");
+// Guest mode: the visitor's library is one we cannot read yet, so they browse the nationwide shelf and check titles at their library.
+const GUEST = "shelf";
+const isGuest = () => S.lib === GUEST;
+function checkUrl(r) {
+  const g = S.guest || {}, q = encodeURIComponent(r.title), host = g.host || "";
+  if (host) {
+    const direct = {
+      "Aspen Discovery": `https://${host}/Search/Results?lookfor=${q}&searchIndex=Keyword&searchSource=local`,
+      "Evergreen": `https://${host}/eg/opac/results?query=${q}&qtype=keyword`,
+      "Koha": `https://${host}/cgi-bin/koha/opac-search.pl?q=${q}`,
+    }[g.vendor];
+    return direct || `https://www.google.com/search?q=${q}+site%3A${encodeURIComponent(host)}`;
+  }
+  return "https://www.google.com/search?q=" + encodeURIComponent(`${r.title} ${g.name || S.libName} ${g.city || ""} ${g.st || ""} library catalog`.replace(/\s+/g, " "));
+}
 function cardHTML(r) {
   const rating = badgeHTML(r);
   const cover = r.img
     ? `<img loading="lazy" src="${esc(r.img)}" alt="" onload="if(this.naturalWidth<20)this.onerror()" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'noimg',textContent:${esc(JSON.stringify(r.title))}}))">`
     : `<span class="noimg">${esc(r.title)}</span>`;
-  const av = r.avail ? `<span class="avail in">On the shelf</span>`
+  const av = isGuest() ? "" : r.avail ? `<span class="avail in">On the shelf</span>`
     : `<span class="avail out">All out${r.holds ? ` · ${r.holds} hold${r.holds > 1 ? "s" : ""}` : ""}</span>`;
   return `<div class="card" data-id="${esc(r.id)}">
     <button class="cover" data-open="${esc(r.id)}" aria-label="${esc(r.title)}">${cover}${rating}</button>
     <button class="heart" data-fav="${esc(r.id)}" aria-pressed="${isFav(r)}" aria-label="Favorite">${isFav(r) ? "♥" : "♡"}</button>
     <div class="ttl">${esc(r.title)}${r.tv && r.sub ? `<span class="tsub">${esc(r.sub)}</span>` : ""}</div>
-    <div class="meta">${r.f === "g" ? esc(r.plat || r.disc || "") : esc(filmYear(r))} · ${esc(r.fmts || r.fmt)}</div>
+    <div class="meta">${r.f === "g" ? esc(r.plat || r.disc || "") : esc(filmYear(r))}${isGuest() ? "" : ` · ${esc(r.fmts || r.fmt)}`}</div>
     ${av}
   </div>`;
 }
@@ -187,11 +202,13 @@ function openDetail(r) {
       <div>
         <h2>${esc(r.title)}</h2>
         ${r.sub ? `<p class="sub">${esc(r.sub)}</p>` : ""}
-        <div class="facts">${r.f === "g" ? esc(r.plat || "") || yearNote : yearNote} · ${esc(fmtLabel)}${r.r ? ` · <b>★ ${r.r.toFixed(1)}</b> from ${Number(r.v).toLocaleString()} votes` : ""}<br><span id="liveAv">${av}</span></div>
-        <p id="detailSynopsis">${r.desc ? esc(r.desc) : `<a href="${esc(r.url)}" target="_blank" rel="noopener">Read the synopsis at your library</a>`}</p>
+        <div class="facts">${r.f === "g" ? esc(r.plat || "") || yearNote : yearNote} · ${esc(fmtLabel)}${r.r ? ` · <b>★ ${r.r.toFixed(1)}</b> from ${Number(r.v).toLocaleString()} votes` : ""}${isGuest() ? "" : `<br><span id="liveAv">${av}</span>`}</div>
+        <p id="detailSynopsis">${r.desc ? esc(r.desc) : isGuest() ? (r.imdb ? `<a href="https://www.imdb.com/title/${esc(r.imdb)}/" target="_blank" rel="noopener">Read the synopsis on IMDb</a>` : "") : `<a href="${esc(r.url)}" target="_blank" rel="noopener">Read the synopsis at your library</a>`}</p>
         ${r.eds && r.eds.length > 1 ? `<div class="facts">${r.eds.map(e => `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.fmt)}${e.disc ? ` (${e.disc})` : ""}</a>: ${e.avail ? `<b style="color:var(--ok)">${e.copies} in</b>` : `all out${e.holds ? `, ${e.holds} holds` : ""}`}`).join("<br>")}</div>` : ""}
         <div class="actions">
-          <a class="btn" href="${esc((r.eds?.find(e => e.avail) || r).url)}" target="_blank" rel="noopener">${r.avail ? "Place a hold" : "Get in line"}</a>
+          ${isGuest()
+            ? `<a class="btn" href="${esc(checkUrl(r))}" target="_blank" rel="noopener">Check at ${esc(S.libName)}</a>`
+            : `<a class="btn" href="${esc((r.eds?.find(e => e.avail) || r).url)}" target="_blank" rel="noopener">${r.avail ? "Place a hold" : "Get in line"}</a>`}
           <a class="btn ghost" href="/t?q=${encodeURIComponent(r.title + " " + (r.fy || ""))}" target="_blank" rel="noopener">Trailer</a>
           ${imdb}
           <button class="btn ghost" data-fav="${esc(r.id)}">${isFav(r) ? "♥ Saved" : "♡ Save"}</button>
@@ -200,7 +217,7 @@ function openDetail(r) {
     </div></div>`;
   $("#detail").showModal();
   const detailLib = S.lib;
-  if (!r.desc && r.f !== "g") {
+  if (!r.desc && r.f !== "g" && !isGuest()) {
     const p = new URLSearchParams({ lib: detailLib, q: r.title, fmt: "all", page: "1" });
     api("/api/search?" + p).then(d => {
       const ids = new Set((r.eds || [r]).map(e => e.id));
@@ -212,7 +229,7 @@ function openDetail(r) {
     }).catch(() => {});
   }
   $("#detailBody").dataset.record = r.id;
-  liveStatus(r);
+  if (!isGuest()) liveStatus(r);
 }
 
 // The weekly copy can't know what's on the shelf right now, so the movie page asks the library.
@@ -447,7 +464,7 @@ async function gunzip(buf) {
 }
 // -> { d } on success, { missing: true } when the host has no copy, throws on anything else
 async function fetchStatic(lib) {
-  const r = await fetch(SNAP_BASE + encodeURIComponent(lib) + ".json.gz", { cache: "no-cache", signal: AbortSignal.timeout ? AbortSignal.timeout(FETCH_MS) : undefined });
+  const r = await fetch(lib === GUEST ? "/shelf.json" : SNAP_BASE + encodeURIComponent(lib) + ".json.gz", { cache: "no-cache", signal: AbortSignal.timeout ? AbortSignal.timeout(FETCH_MS) : undefined });
   if (r.status === 404) return { missing: true };
   if (!r.ok) throw new Error("copy host answered " + r.status);
   const buf = new Uint8Array(await r.arrayBuffer());
@@ -459,7 +476,7 @@ async function fetchStatic(lib) {
 // Tell the copier this library is wanted. At most once per library per day per device, never in a loop.
 const wantSent = new Set();
 function wantCopy(lib) {
-  if (wantSent.has(lib)) return;
+  if (lib === GUEST || wantSent.has(lib)) return;
   wantSent.add(lib);
   let last = 0;
   try { last = +localStorage.getItem("nl-want-" + lib) || 0; } catch {}
@@ -528,6 +545,15 @@ const liveNote = () => "";    // the message lives in the corner card now (paint
 let toastDismissed = "";
 function paintCopyToast() {
   const el = document.getElementById("copyToast");
+  if (isGuest()) {
+    const here = !$("#shelf").hidden && !$("#browse").hidden && toastDismissed !== GUEST;
+    if (!here) { if (el) el.remove(); return; }
+    const card = el || Object.assign(document.createElement("div"), { id: "copyToast", className: "copy-toast" });
+    card.setAttribute("role", "status"); card.setAttribute("aria-live", "polite");
+    card.innerHTML = `<div class="ct-body">Browsing movies for ${esc(S.libName)}. Tap <b>Check at ${esc(S.libName)}</b> on any movie to see if they have it.</div><button class="ct-x" data-ct-close aria-label="Dismiss">\u00d7</button>`;
+    if (!el) document.body.append(card);
+    return;
+  }
   const lib = S.lib, ready = !!lib && LATE?.lib === lib;
   const here = !!lib && !$("#shelf").hidden && !$("#browse").hidden && SNAP?.lib === lib && !SNAP.ver;
   const show = here && (ready || (SNAP.building && !SNAP.loading && toastDismissed !== lib));
@@ -721,7 +747,7 @@ function openFilters() {
     </div>
     ${games ? "" : `<h3>Rating</h3>
     <label class="range1">At least <output id="mro">${S.minR ? "★ " + S.minR : "any"}</output><input type="range" id="minR" min="0" max="9" step="0.5" value="${S.minR}"></label>`}
-    <label class="toggle big"><input type="checkbox" id="onShelfF" ${S.onShelf ? "checked" : ""}> On the shelf now</label>
+    ${isGuest() ? "" : `<label class="toggle big"><input type="checkbox" id="onShelfF" ${S.onShelf ? "checked" : ""}> On the shelf now</label>`}
     <div class="stack" style="margin-top:18px">
       <button class="btn" id="filtShow">Show ${filterCount() ? filterCount() + " " : ""}titles</button>
       <button class="link" id="filtClear" style="justify-self:center">Clear all</button>
@@ -757,7 +783,7 @@ $("#filtBody").addEventListener("input", e => {
 $("#filters").addEventListener("close", () => { liveQ = false; reload(); });
 $("#filtBtn").onclick = openFilters;
 $("#active").addEventListener("click", e => { const b = e.target.closest("[data-clear]"); if (b) { clearFilter(b.dataset.clear); save(); reload(); } });
-document.addEventListener("click", e => { if (e.target.id === "wholeCat") { liveQ = true; reload(); } else if (e.target.id === "retryMore") { $("#more").textContent = "Loading more…"; liveMore(); } else if (e.target.id === "openReadyCopy") { reload(); } else if (e.target.closest?.("[data-ct-close]")) { toastDismissed = S.lib; paintCopyToast(); } });
+document.addEventListener("click", e => { if (e.target.id === "wholeCat") { liveQ = true; reload(); } else if (e.target.id === "retryMore") { $("#more").textContent = "Loading more…"; liveMore(); } else if (e.target.id === "openReadyCopy") { reload(); } else if (e.target.closest?.("[data-ct-close]")) { toastDismissed = S.lib; paintCopyToast(); } else if (e.target.id === "nopeBrowse") { enterGuest(nopeInfo); } });
 
 // ---- favorites and watchlist tabs ------------------------------------------------
 
@@ -895,7 +921,6 @@ const passkeysOK = () => !!(window.PublicKeyCredential && WA);
 async function refreshMe() {
   try { me = await api("/api/me"); } catch { me = { uid: null }; }
   $("#acctBtn").textContent = me.uid ? "Account" : "Sign in";
-  $("#homeOut").hidden = !!me.uid; $("#homeIn").hidden = !me.uid;
   return me;
 }
 
@@ -1080,6 +1105,7 @@ function setTab(tab) {
 }
 
 function paintControls() {
+  document.body.classList.toggle("guest", isGuest());
   document.querySelectorAll("#fmt button").forEach(b => b.setAttribute("aria-pressed", b.dataset.fmt === S.fmt));
   $("#sort").value = S.sort;
 }
@@ -1164,10 +1190,18 @@ function requestLibrary(info) {
     body: JSON.stringify({ name: info.name || "", city: info.city || "", st: info.st || "", host: info.host || "", vendor: info.vendor || "" }) })
     .then(r => { if (r.ok) try { localStorage.setItem("nl-req-" + key, String(Date.now())); } catch {} }).catch(() => sentRequests.delete(key));
 }
+let nopeInfo = null;
+function enterGuest(info) {
+  S.guest = { name: info.name || "your library", city: info.city || "", st: info.st || "", host: info.host || "", vendor: info.vendor || "" };
+  S.lib = GUEST; S.libName = S.guest.name; S.demo = true; S.shelf = "all"; S.sort = "top"; clearFilter("all"); S.fmt = "all";
+  toastDismissed = "";
+  save(); boot();
+}
 function showUnconnected(info) {
+  nopeInfo = { ...info };
   const where = [info.city, info.st].filter(Boolean).join(", ");
-  $("#nopeTitle").textContent = info.name ? `We can't show ${info.name}${where ? ` (${where})` : ""} yet.` : "We can't show that library yet.";
-  $("#nopeText").textContent = "We've noted that you want it. We add the libraries people ask for most, so every request helps.";
+  $("#nopeTitle").textContent = info.name ? `${info.name}${where ? ` (${where})` : ""}` : info.host ? `The library at ${info.host}` : "Your library";
+  $("#nopeText").textContent = "We can't show what's on its shelves yet. Browse movies here, then check any of them at your library.";
   $("#nopeErr").textContent = ""; $("#nopeUrl").value = "";
   $("#pickErr").textContent = ""; $("#libList").hidden = true;
   $("#nope").hidden = false;
@@ -1184,11 +1218,11 @@ $("#nopeForm").onsubmit = async e => {
     S.lib = info.slug; S.libName = info.name; S.demo = false; S.shelf = "all"; S.sort = ""; clearFilter("all"); S.fmt = "all";
     save(); boot();
   } catch (err) {
-    $("#nopeErr").textContent = err.data?.unsupported ? "We couldn't find a catalog we can read on that site yet, but we've noted it." : err.message;
-    if (err.data?.unsupported) requestLibrary({ name: $("#nopeTitle").textContent.replace(/^We can't show |( \(.*\))? yet\.$/g, ""), host: err.data.host, vendor: err.data.vendor });
+    $("#nopeErr").textContent = err.data?.unsupported ? "Saved. The check button will use that website." : err.message;
+    if (err.data?.unsupported && nopeInfo) { nopeInfo.host = err.data.host || nopeInfo.host; nopeInfo.vendor = err.data.vendor || nopeInfo.vendor; }
+    if (err.data?.unsupported) requestLibrary({ name: nopeInfo?.name || "", city: nopeInfo?.city || "", st: nopeInfo?.st || "", host: err.data.host, vendor: err.data.vendor });
   }
 };
-document.addEventListener("click", e => { const d = e.target.closest("[data-demo]"); if (d) chooseLibrary(d.dataset.demo, true); });
 
 async function chooseLibrary(q, demo = false) {
   $("#pickErr").textContent = ""; $("#nope").hidden = true; $("#libList").hidden = true;
@@ -1197,7 +1231,7 @@ async function chooseLibrary(q, demo = false) {
     S.lib = info.slug; S.libName = info.name; S.demo = demo; S.shelf = "all"; S.sort = ""; clearFilter("all"); S.fmt = "all";
     save(); boot();
   } catch (e) {
-    if (e.data?.unsupported) showUnconnected({ name: e.data.host ? `the library at ${e.data.host}` : "", host: e.data.host, vendor: e.data.vendor });
+    if (e.data?.unsupported) showUnconnected({ name: "", host: e.data.host, vendor: e.data.vendor });
     else $("#pickErr").textContent = e.message;
   }
 }
@@ -1265,9 +1299,6 @@ $("#libBtn").onclick = () => { showHome(); $("#pickInput").focus(); };
 $("#home").onclick = e => { e.preventDefault(); showHome(); };
 $("#resume").onclick = () => boot();
 $("#acctBtn").onclick = openAccount;
-$("#homeCreate").onclick = () => { openAccount(); $("#mkKey")?.click(); };
-$("#homeSignin").onclick = openAccount;
-$("#homeAcct").onclick = openAccount;
 document.addEventListener("click", e => {
   const o = e.target.closest("[data-open]"); if (o) { const r = rowsById.get(o.dataset.open); if (r) openDetail(r); return; }
   const f = e.target.closest("[data-fav]"); if (f) { toggleFav(f.dataset.fav); return; }
@@ -1300,7 +1331,7 @@ countVisit();
 
 const linked = new URLSearchParams(location.search).get("lib");
 history.replaceState({ nl: "home" }, "", "/");
-if (linked) chooseLibrary(linked, linked !== S.lib || !!S.demo);
+if (linked && linked !== GUEST) chooseLibrary(linked, linked !== S.lib || !!S.demo);
 else showHome();
 counts();
 refreshMe().then(() => {

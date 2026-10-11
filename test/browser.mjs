@@ -432,22 +432,63 @@ scenario("finding your library: type a town or name, never a dead end", async b 
   await page.waitForFunction(() => /Denville Free/.test(document.querySelector("#libList")?.textContent || ""));
   await page.keyboard.press("Enter");
   await page.waitForSelector("#nope:not([hidden])", { timeout: 3000 });
-  const nope = await page.$eval("#nope", e => ({ title: e.querySelector("#nopeTitle").textContent, text: e.textContent, demos: e.querySelectorAll("[data-demo]").length }));
-  ok(/We can't show Denville Free Public Library \(Denville, NJ\) yet\./.test(nope.title), `kind message names the library: "${nope.title}"`);
+  const nope = await page.$eval("#nope", e => ({ title: e.querySelector("#nopeTitle").textContent, text: e.textContent, browse: e.querySelector("#nopeBrowse")?.textContent }));
+  ok(nope.title === "Denville Free Public Library (Denville, NJ)", `names the library and its town: "${nope.title}"`);
   ok(/We've noted that you want it/.test(nope.text), "says the request is noted");
-  ok(!/catalog|BiblioCommons|not found|error/i.test(nope.title + " " + nope.text.replace(/Paste it here[^.]*\./, "")), "no jargon, no 'not found'");
-  ok(nope.demos === 4, "four ready libraries offered right there to try");
+  ok(!/catalog|BiblioCommons|not found|error|Kanopy|Hoopla|Libby|how it works/i.test(nope.text), "no jargon, no clutter, no 'not found'");
+  ok(nope.browse === "Browse movies and check my library", `one clear button: "${nope.browse}"`);
+  ok(!(await page.$("#homeOut, #homeIn, #homeAcct")), "no account buttons competing on the home page");
   await sleep(300);
   ok(W.requests.length === 1 && W.requests[0].name === "Denville Free Public Library" && W.requests[0].st === "NJ", `request counted once (${JSON.stringify(W.requests[0])})`);
-  // 3. one tap on a ready library opens its shelf
-  await page.click('[data-demo="seattle"]'); await waitCards(page, 12);
-  ok(/Seattle/.test(await page.$eval("#libBtn", e => e.textContent)), "the sample library opens");
+  // 3. one tap opens movies to browse and check at that library
+  await page.click("#nopeBrowse"); await waitCards(page, 12);
+  ok(/Denville/.test(await page.$eval("#libBtn", e => e.textContent)), "one tap opens the movie shelf for that library");
   await page.close();
   // 4. same day, same device: asking again does not count twice
   const p2 = (await newPage(b, W, { ctx: context })).page;
   await p2.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" }); await p2.waitForSelector("#pickInput", { visible: true });
   await p2.type("#pickInput", "denville nj"); await p2.waitForFunction(() => /Denville Free/.test(document.querySelector("#libList")?.textContent || "")); await p2.keyboard.press("Enter"); await sleep(500);
   ok(W.requests.length === 1, "the same device asking again the same day is not counted twice");
+});
+
+scenario("a library we cannot read yet: browse the nationwide shelf and check titles at your library", async b => {
+  const W = world({ vendors: { "roxbury.aspendiscovery.org": "Aspen Discovery" } });
+  const { page } = await newPage(b, W);
+  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#pickInput", { visible: true });
+  await page.type("#pickInput", "denville nj"); await page.waitForFunction(() => /Denville Free/.test(document.querySelector("#libList")?.textContent || "")); await page.keyboard.press("Enter");
+  await page.waitForSelector("#nope:not([hidden])");
+  ok(/Browse movies here, then check any of them at your library/.test(await page.$eval("#nopeText", e => e.textContent)), "the screen offers movies right away");
+  const t0 = Date.now(); await page.click("#nopeBrowse"); await waitCards(page, 12);
+  note("guest mode: tap Browse movies -> first movies (ms)", Date.now() - t0);
+  ok(/Denville Free Public Library/.test(await page.$eval("#libBtn", e => e.textContent)), "header names the visitor's library");
+  const st = await status(page); ok(/\d[\d,]* titles/.test(st), `a real nationwide shelf: "${st.trim().slice(0, 40)}"`);
+  ok((await page.$$("#grid .avail")).length === 0, "no on-the-shelf / all-out labels (we cannot know)");
+  ok(!/DVD|Blu-ray/.test((await page.$$eval("#grid .meta", e => e.slice(0, 20).map(x => x.textContent))).join(" ")), "no format shown either");
+  ok(await page.$eval("#fmt", e => getComputedStyle(e).display === "none"), "the Both / Blu-ray / DVD / Games switch is hidden");
+  const card = await page.$eval("#copyToast", e => e.textContent).catch(() => "");
+  ok(/Browsing movies for Denville Free Public Library/.test(card) && /Check at Denville Free Public Library/.test(card), `corner card explains it once: "${card.slice(0, 80)}"`);
+  await page.click("#filtBtn"); await sleep(200);
+  ok(!(await page.$("#onShelfF")), "the filters have no 'On the shelf now' toggle");
+  await page.evaluate(() => document.querySelector("#filters").close()); await sleep(500);
+  await page.click("#grid .card .cover"); await sleep(400);
+  const d = await page.$eval("#detailBody", e => ({ links: [...e.querySelectorAll("a")].map(a => [a.textContent.trim(), a.href]), text: e.textContent, title: e.querySelector("h2").textContent }));
+  const check = d.links.find(l => /^Check at/.test(l[0]));
+  ok(check && check[0] === "Check at Denville Free Public Library", `detail has the button: "${check?.[0]}"`);
+  ok(check && /google\.com\/search/.test(check[1]) && check[1].includes(encodeURIComponent(d.title)) && /Denville/.test(decodeURIComponent(check[1])), "with no library address known it searches the title + library name + town");
+  ok(!/Place a hold|Get in line|On the shelf|All checked out/.test(d.text), "no hold button and no shelf status");
+  ok(d.links.some(l => /Trailer/.test(l[0])) && d.links.some(l => /IMDb/.test(l[0])), "trailer and IMDb are still there");
+  ok(W.searchReqs.length === 0 && W.availReqs.length === 0 && W.wants.length === 0 && W.oldSnapCalls === 0, "no live search, availability, copy request or old snapshot call");
+  // paste the library's website once on the kind screen: the button now goes straight to that library's search
+  await page.evaluate(() => document.querySelector("#detail").close()); await sleep(500);
+  await page.evaluate(() => document.querySelector("#libBtn").click()); await page.waitForSelector("#pickInput", { visible: true });
+  await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", "roxbury"); await page.waitForSelector("#libList li[data-i]"); await page.keyboard.press("Enter");
+  await page.waitForSelector("#nope:not([hidden])");
+  await page.type("#nopeUrl", "https://roxbury.aspendiscovery.org/?browseCategory=x"); await page.evaluate(() => document.querySelector("#nopeForm").requestSubmit()); await sleep(500);
+  await page.click("#nopeBrowse"); await waitCards(page, 12); await page.click("#grid .card .cover"); await sleep(400);
+  const d2 = await page.$eval("#detailBody", e => ({ href: [...e.querySelectorAll("a")].find(a => /^Check at/.test(a.textContent))?.href, title: e.querySelector("h2").textContent }));
+  ok(d2.href === `https://roxbury.aspendiscovery.org/Search/Results?lookfor=${encodeURIComponent(d2.title)}&searchIndex=Keyword&searchSource=local`, `after pasting the website it opens that library's own search (${d2.href?.slice(0, 70)})`);
+  ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
 });
 
 scenario("finding your library: a normal website is enough, and a failed one still ends kindly", async b => {
@@ -462,7 +503,7 @@ scenario("finding your library: a normal website is enough, and a failed one sti
   await page.$eval("#pickInput", e => { e.value = ""; });
   await page.type("#pickInput", "https://roxbury.aspendiscovery.org/?browseCategory=roxbury_new_york_times_best_sellers"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
   await page.waitForSelector("#nope:not([hidden])", { timeout: 4000 });
-  ok(/We can't show the library at roxbury\.aspendiscovery\.org yet\./.test(await page.$eval("#nopeTitle", e => e.textContent)), "a site we cannot read gets the kind screen, not an error");
+  ok(/^The library at roxbury\.aspendiscovery\.org$/.test(await page.$eval("#nopeTitle", e => e.textContent)), "a site we cannot read gets the kind screen, not an error");
   await sleep(300);
   ok(W.requests.length === 1 && W.requests[0].host === "roxbury.aspendiscovery.org" && W.requests[0].vendor === "Aspen Discovery", `counted with its catalog system (${JSON.stringify(W.requests[0])})`);
   // the kind screen has its own box: paste a website there

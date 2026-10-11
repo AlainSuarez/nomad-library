@@ -62,30 +62,19 @@
       <div class="nope" id="nope" hidden>
         <p><b id="nopeTitle"></b></p>
         <p id="nopeText"></p>
+        <p><button class="btn" type="button" id="nopeBrowse">Browse movies and check my library</button></p>
+        <p class="small-print" id="nopeNoted">We've noted that you want it. We add the libraries people ask for most.</p>
         <form id="nopeForm" class="nope-form" autocomplete="off">
-          <label for="nopeUrl">Know your library's website? Paste it here and we'll look for the rest.</label>
-          <div class="row"><input id="nopeUrl" type="text" placeholder="For example, spl.org" autocomplete="off"><button type="submit">Check</button></div>
+          <label for="nopeUrl">Paste your library's website so the check button goes straight to it.</label>
+          <div class="row"><input id="nopeUrl" type="text" placeholder="For example, spl.org" autocomplete="off"><button type="submit">Add</button></div>
           <p class="err" id="nopeErr" role="alert" aria-live="polite"></p>
         </form>
-        <p class="small-print">See how it works with a library that's ready:
-          <button class="link" type="button" data-demo="chipublib">Chicago</button> ·
-          <button class="link" type="button" data-demo="seattle">Seattle</button> ·
-          <button class="link" type="button" data-demo="nypl">New York</button> ·
-          <button class="link" type="button" data-demo="bclsnj">Burlington County</button></p>
-        <p class="small-print">Meanwhile, most libraries stream movies free with a library card through Kanopy, Hoopla or Libby.</p>
       </div>
       <div class="card-links">
         <button class="link" type="button" id="howBtn">Can't find it?</button>
         <button class="link" type="button" id="trySeattle">Or try Seattle's</button>
       </div>
       <p class="how-text" id="howText" hidden>Type your town or your library's name and pick it from the list. You can also paste your library's website, like <b>spl.org</b>, and press Open. We'll look for the rest.</p>
-      <div class="acct-row home-acct" id="homeOut">
-        <button class="btn" id="homeCreate">Create a free account</button>
-        <button class="btn ghost" id="homeSignin">Sign in</button>
-      </div>
-      <div class="acct-row home-acct" id="homeIn" hidden>
-        <button class="btn ghost" id="homeAcct">Your account</button>
-      </div>
     </div>
   </section>
 

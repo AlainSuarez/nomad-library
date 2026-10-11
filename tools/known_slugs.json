@@ -1,0 +1,16 @@
+{
+  "austin": ["Austin Public Library", "TX"],
+  "bpl": ["Boston Public Library", "MA"],
+  "cambridgepl": ["Cambridge Public Library", "MA"],
+  "dcpl": ["Daviess County Public Library", "KY"],
+  "jeffcolibrary": ["Jefferson County Public Library", "CO"],
+  "jocolibrary": ["Johnson County Library", "KS"],
+  "kdl": ["Kent District Library", "MI"],
+  "llc": ["Lakeland Library Cooperative", "MI"],
+  "oaklandlibrary": ["Oakland Public Library", "CA"],
+  "sppl": ["Saint Paul Public Library", "MN"],
+  "sjpl": ["San Jose Public Library", "CA"],
+  "nypl": ["New York Public Library", "NY"],
+  "toledo": ["Toledo", "OH"],
+  "wccls": ["Washington County Cooperative", "OR"]
+}

@@ -48,11 +48,22 @@ function realRows(slug) {
   return null;
 }
 
+const DIR_DEFAULT = [
+  ["Alpha Public Library", "Alphaville", "AA", 1000, "alpha"], ["Beta Public Library", "Betatown", "BB", 900, "beta"], ["Gamma Public Library", "Gammaburg", "GG", 800, "gamma"],
+  ["Burlington County Library", "Westampton", "NJ", 363983, "bclsnj"], ["Chicago Public Library", "Chicago", "IL", 2746388, "chipublib"], ["Seattle Public Library", "Seattle", "WA", 762500, "seattle"],
+  ["San Francisco Public Library", "San Francisco", "CA", 873965, "sfpl"], ["Alameda County Library", "Fremont", "CA", 400000, "aclibrary"], ["Algonquin Area Public Library District", "Algonquin", "IL", 30000, "aapld"],
+  ["New York Public Library", "New York", "NY", 8800000, "nypl"],
+  ["Roxbury Public Library", "Succasunna", "NJ", 22950, 0], ["Roxbury Library Association", "Roxbury", "NY", 2247, 0], ["Roxbury Free Public Library", "Roxbury", "VT", 1030, 0],
+  ["Denville Free Public Library", "Denville", "NJ", 17107, 0], ["Free Library of Philadelphia", "Philadelphia", "PA", 1603797, 0],
+];
+const TYPED = { alpha: "Alpha Public", beta: "Beta Public", gamma: "Gamma Public", bclsnj: "Burlington County", chipublib: "Chicago Public", seattle: "Seattle Public", sfpl: "San Francisco", aclibrary: "Alameda County", aapld: "Algonquin", nypl: "New York Public" };
+
 // ---- the mocked world ---------------------------------------------------------------------------------
 function world(over = {}) {
   return {
-    libs: [["bclsnj", "Burlington County Library System"], ["alpha", "Alpha Public Library"], ["beta", "Beta Public Library"], ["gamma", "Gamma Public Library"]],
+    libs: [["bclsnj", "Burlington County Library System"], ["alpha", "Alpha Public Library"], ["beta", "Beta Public Library"], ["gamma", "Gamma Public Library"], ["seattle", "The Seattle Public Library"], ["chipublib", "Chicago Public Library"], ["nypl", "The New York Public Library"]],
     snap: {},                    // slug -> { status, body, delay, headers }
+    dir: DIR_DEFAULT, websites: {}, vendors: {}, requests: [],
     me: { uid: null }, puts: [], wants: [], reqs: [], snapReqs: [], searchReqs: [], availReqs: [], oldSnapCalls: 0, searchFail: false, ...over,
   };
 }
@@ -94,7 +105,16 @@ async function newPage(browser, W, { ctx, seedState, idbBroken, viewport } = {})
         const p = u.pathname;
         if (p === "/api/me") { if (req.method() === "PUT") { W.puts.push(JSON.parse(req.postData() || "{}")); return done(200, '{"ok":true}'); } return done(200, JSON.stringify(W.me)); }
         if (p === "/api/libs") return done(200, JSON.stringify(W.libs));
-        if (p === "/api/library") { const q = (u.searchParams.get("q") || "").toLowerCase(); const hit = W.libs.find(l => l[0] === q || l[1].toLowerCase() === q); return hit ? done(200, JSON.stringify({ slug: hit[0], name: hit[1] })) : done(404, JSON.stringify({ error: "not found", unsupported: true })); }
+        if (p === "/api/library") {
+          const q = (u.searchParams.get("q") || "").toLowerCase();
+          if (/[./]/.test(q)) {
+            const host = q.replace(/^https?:\/\//, "").replace(/^www\./, "").split(/[/?#]/)[0];
+            const slug = W.websites[host]; const hit = slug && W.libs.find(l => l[0] === slug);
+            return hit ? done(200, JSON.stringify({ slug: hit[0], name: hit[1] })) : done(404, JSON.stringify({ error: "We can't show that library yet.", unsupported: true, host, vendor: W.vendors[host] || "" }));
+          }
+          const hit = W.libs.find(l => l[0] === q || l[1].toLowerCase() === q); return hit ? done(200, JSON.stringify({ slug: hit[0], name: hit[1] })) : done(404, JSON.stringify({ error: "We can't show that library yet.", unsupported: true }));
+        }
+        if (p === "/api/request") { W.requests.push(JSON.parse(req.postData() || "{}")); return done(200, '{"ok":true}'); }
         if (p === "/api/want") { W.wants.push(JSON.parse(req.postData() || "{}").lib); return done(200, '{"ok":true}'); }
         if (p === "/api/visit") { (W.visits ||= []).push(JSON.parse(req.postData() || "{}")); return done(200, '{"ok":true}'); }
         if (p === "/api/snap") { W.oldSnapCalls++; return done(200, '{"ver":0,"building":true}'); }
@@ -108,6 +128,7 @@ async function newPage(browser, W, { ctx, seedState, idbBroken, viewport } = {})
         if (p === "/api/avail") { W.availReqs.push(u.search); const out = {}; for (const id of (u.searchParams.get("ids") || "").split(",")) out[id] = { avail: false, copies: 0, total: 3, holds: 7 }; return done(200, JSON.stringify(out)); }
         return done(404, JSON.stringify({ error: "not mocked" }));
       }
+      if (u.pathname === "/directory.json") return done(200, JSON.stringify({ v: 1, libs: W.dir }), "application/json", { "cache-control": "no-store" });
       let rel = u.pathname === "/" ? "/index.html" : u.pathname;
       let file = path.join(PUBLIC, rel);
       if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) file = fs.existsSync(file + ".html") ? file + ".html" : path.join(PUBLIC, "index.html");
@@ -132,7 +153,7 @@ async function waitCards(page, min = 1, timeout = 20000) {
 const titles = page => page.$$eval("#grid .card", els => els.slice(0, 40).map(e => e.textContent));
 async function pickLibrary(page, slug) {
   await page.waitForSelector("#pickInput", { visible: true });
-  await page.type("#pickInput", slug);
+  await page.type("#pickInput", TYPED[slug] || slug);
   await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
 }
 
@@ -185,7 +206,7 @@ scenario("REAL copy host: the six finished libraries each open from GitHub in a 
     const W = world({ realSnapHost: true, libs: libs.map(l => [l[0], l[1]]) });
     const { page, context } = await newPage(b, W);          // a brand new browser profile: nothing cached
     await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("#pickInput", { visible: true }); await page.type("#pickInput", slug);
+    await page.waitForSelector("#pickInput", { visible: true }); await page.type("#pickInput", TYPED[slug]);
     const t0 = Date.now(); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
     await page.waitForFunction(n => document.querySelector("#libBtn").textContent.includes(n) && /\d[\d,]* titles/.test(document.querySelector("#status").textContent) && document.querySelectorAll("#grid .card").length >= 12, { timeout: 30000 }, name.split(" ")[0]);
     const dt = Date.now() - t0, st = await status(page), n = +st.match(/([\d,]+) titles/)[1].replace(/,/g, "");
@@ -351,7 +372,7 @@ scenario("rapid library switching: a slow copy for the library you left never re
   await page.evaluate(() => document.querySelector("#libBtn").click()); await sleep(200);
   // back on the home page: choose the other library
   await page.waitForSelector("#pickInput", { visible: true });
-  await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", "beta");
+  await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", TYPED.beta);
   await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
   await waitCards(page, 12);
   await page.waitForFunction(() => /\d,\d{3} titles/.test(document.querySelector("#status").textContent), { timeout: 8000 });
@@ -393,6 +414,79 @@ scenario("favorites, watchlist and account state: a signed-in account's data is 
   ok(!W.reqs.some(r => /delete|logout/.test(r)), "no delete or sign-out request was made");
 });
 
+scenario("finding your library: type a town or name, never a dead end", async b => {
+  const W = world({ websites: { "spl.org": "seattle", "chicagopl.org": "chipublib" }, vendors: { "roxbury.aspendiscovery.org": "Aspen Discovery" }, snap: { seattle: { body: snapBody(makeRows("seattle", 800)) } } });
+  const { page, context } = await newPage(b, W);
+  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#pickInput", { visible: true });
+  // 1. a town finds its libraries, connected ones are marked Ready
+  await page.type("#pickInput", "Roxbury"); await page.waitForSelector("#libList li[data-i]", { visible: true });
+  const rows = await page.$$eval("#libList li[data-i]", els => els.map(e => e.textContent));
+  ok(rows.length === 3 && rows.every(r => /Roxbury/.test(r)) && rows[0].includes("Succasunna, NJ"), `"Roxbury" lists all three Roxburys with their towns (${rows.map(r => r.slice(0, 40)).join(" | ")})`);
+  ok(!rows.some(r => /Ready/.test(r)), "libraries we cannot show yet carry no Ready mark");
+  await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", "chicago");
+  await page.waitForFunction(() => /Ready/.test(document.querySelector("#libList")?.textContent || ""), { timeout: 3000 });
+  ok(true, "a connected library is marked Ready");
+  // 2. Denville by name + state: a library we cannot show yet
+  await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", "denville nj");
+  await page.waitForFunction(() => /Denville Free/.test(document.querySelector("#libList")?.textContent || ""));
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("#nope:not([hidden])", { timeout: 3000 });
+  const nope = await page.$eval("#nope", e => ({ title: e.querySelector("#nopeTitle").textContent, text: e.textContent, demos: e.querySelectorAll("[data-demo]").length }));
+  ok(/We can't show Denville Free Public Library \(Denville, NJ\) yet\./.test(nope.title), `kind message names the library: "${nope.title}"`);
+  ok(/We've noted that you want it/.test(nope.text), "says the request is noted");
+  ok(!/catalog|BiblioCommons|not found|error/i.test(nope.title + " " + nope.text.replace(/Paste it here[^.]*\./, "")), "no jargon, no 'not found'");
+  ok(nope.demos === 4, "four ready libraries offered right there to try");
+  await sleep(300);
+  ok(W.requests.length === 1 && W.requests[0].name === "Denville Free Public Library" && W.requests[0].st === "NJ", `request counted once (${JSON.stringify(W.requests[0])})`);
+  // 3. one tap on a ready library opens its shelf
+  await page.click('[data-demo="seattle"]'); await waitCards(page, 12);
+  ok(/Seattle/.test(await page.$eval("#libBtn", e => e.textContent)), "the sample library opens");
+  await page.close();
+  // 4. same day, same device: asking again does not count twice
+  const p2 = (await newPage(b, W, { ctx: context })).page;
+  await p2.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" }); await p2.waitForSelector("#pickInput", { visible: true });
+  await p2.type("#pickInput", "denville nj"); await p2.waitForFunction(() => /Denville Free/.test(document.querySelector("#libList")?.textContent || "")); await p2.keyboard.press("Enter"); await sleep(500);
+  ok(W.requests.length === 1, "the same device asking again the same day is not counted twice");
+});
+
+scenario("finding your library: a normal website is enough, and a failed one still ends kindly", async b => {
+  const W = world({ websites: { "spl.org": "seattle" }, vendors: { "roxbury.aspendiscovery.org": "Aspen Discovery" }, libs: [["seattle", "The Seattle Public Library"], ["alpha", "Alpha Public Library"]], snap: { seattle: { body: snapBody(makeRows("seattle", 800)) } } });
+  const { page } = await newPage(b, W);
+  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#pickInput", { visible: true });
+  await page.type("#pickInput", "https://www.spl.org/"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
+  await waitCards(page, 12);
+  ok(/Seattle/.test(await page.$eval("#libBtn", e => e.textContent)), "pasting a normal library website opens that library");
+  await page.evaluate(() => document.querySelector("#libBtn").click()); await page.waitForSelector("#pickInput", { visible: true });
+  await page.$eval("#pickInput", e => { e.value = ""; });
+  await page.type("#pickInput", "https://roxbury.aspendiscovery.org/?browseCategory=roxbury_new_york_times_best_sellers"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
+  await page.waitForSelector("#nope:not([hidden])", { timeout: 4000 });
+  ok(/We can't show the library at roxbury\.aspendiscovery\.org yet\./.test(await page.$eval("#nopeTitle", e => e.textContent)), "a site we cannot read gets the kind screen, not an error");
+  await sleep(300);
+  ok(W.requests.length === 1 && W.requests[0].host === "roxbury.aspendiscovery.org" && W.requests[0].vendor === "Aspen Discovery", `counted with its catalog system (${JSON.stringify(W.requests[0])})`);
+  // the kind screen has its own box: paste a website there
+  await page.type("#nopeUrl", "spl.org"); await page.evaluate(() => document.querySelector("#nopeForm").requestSubmit());
+  await waitCards(page, 12);
+  ok(/Seattle/.test(await page.$eval("#libBtn", e => e.textContent)), "the second chance box works");
+  // typing nonsense and pressing Open: friendly line, no crash, nothing counted
+  await page.evaluate(() => document.querySelector("#libBtn").click()); await page.waitForSelector("#pickInput", { visible: true });
+  await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", "qqzzxxww"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit()); await sleep(300);
+  const err = await page.$eval("#pickErr", e => e.textContent);
+  ok(/town|website/.test(err) && !/not found|catalog/i.test(err), `nonsense gets a helpful line: "${err}"`);
+  ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
+});
+
+scenario("finding your library: typing a name and pressing Open picks the best match", async b => {
+  const W = world({ snap: { bclsnj: { body: snapBody(makeRows("bclsnj", 900)) } } });
+  const { page } = await newPage(b, W);
+  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#pickInput", { visible: true });
+  await page.type("#pickInput", "Burlington County NJ"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
+  await waitCards(page, 12);
+  ok(/Burlington County/.test(await page.$eval("#libBtn", e => e.textContent)), "Open without clicking a suggestion still finds the library");
+});
+
 scenario("visit counter: one anonymous tick per device per day, new vs returning, silent without storage", async b => {
   const W = world({});
   const { page, context } = await newPage(b, W);
@@ -429,7 +523,7 @@ scenario("narrow phone layout: no sideways scrolling on home, shelf, detail", as
   ok(d.l >= -1 && d.r <= d.w + 1, `detail sheet fits the screen (${Math.round(d.l)}..${Math.round(d.r)} of ${d.w})`);
   await page.evaluate(() => document.querySelector("#detail").close()); await sleep(500);   // closing a dialog triggers a delayed history.back()
   await page.evaluate(() => document.querySelector("#libBtn").click());
-  await page.waitForSelector("#pickInput", { visible: true }); await page.type("#pickInput", "beta"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
+  await page.waitForSelector("#pickInput", { visible: true }); await page.type("#pickInput", TYPED.beta); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
   await page.waitForSelector("#copyToast", { timeout: 8000 });
   const m = await page.$eval("#copyToast", e => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, b: r.bottom, w: innerWidth, h: innerHeight }; });
   ok(m.l >= 0 && m.r <= m.w && m.b <= m.h, `corner card fits a phone screen (${Math.round(m.l)}..${Math.round(m.r)} of ${m.w})`);

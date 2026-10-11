@@ -257,3 +257,7 @@ img { max-width: 100%; }
 .copy-toast .link { color: inherit; text-decoration: underline; font: inherit; }
 .copy-toast .ct-prog { font-size: 13px; opacity: .85; }
 @media (max-width: 640px) { .copy-toast { right: 12px; bottom: 12px; left: 12px; width: auto; } }
+
+.suggest .ready { font-weight: 600; color: var(--ok); }
+.nope-form { margin: 12px 0 8px; }
+.nope-form label { display: block; font-size: 14px; margin-bottom: 6px; }

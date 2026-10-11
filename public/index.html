@@ -53,26 +53,32 @@
       <form id="pickForm" class="pick-form" autocomplete="off">
         <label for="pickInput">Find your library</label>
         <div class="row">
-          <input id="pickInput" type="text" autocomplete="off" placeholder="Name, city or website" role="combobox" aria-expanded="false" aria-controls="libList" aria-autocomplete="list">
+          <input id="pickInput" type="text" autocomplete="off" placeholder="Your library's name or town" role="combobox" aria-expanded="false" aria-controls="libList" aria-autocomplete="list">
           <button type="submit">Open</button>
         </div>
         <ul class="suggest" id="libList" role="listbox" hidden></ul>
         <p class="err" id="pickErr" role="alert" aria-live="polite"></p>
       </form>
       <div class="nope" id="nope" hidden>
-        <p><b>That library isn't supported yet.</b> Nomad Library works with libraries whose catalog runs on BiblioCommons. Yours probably uses different software. Here's how to get free movies from it anyway:</p>
-        <ul>
-          <li>Search its catalog for "DVD" or "Blu-ray" and sort by newest.</li>
-          <li>Check its digital apps. Kanopy and Hoopla stream movies free with a library card, and Libby has some too.</li>
-          <li>Ask about interlibrary loan. Most libraries can borrow a movie from another library for you.</li>
-        </ul>
-        <p class="small-print">Want to see how it works? <button class="link" type="button" id="nopeSeattle">Try Seattle's library</button></p>
+        <p><b id="nopeTitle"></b></p>
+        <p id="nopeText"></p>
+        <form id="nopeForm" class="nope-form" autocomplete="off">
+          <label for="nopeUrl">Know your library's website? Paste it here and we'll look for the rest.</label>
+          <div class="row"><input id="nopeUrl" type="text" placeholder="For example, spl.org" autocomplete="off"><button type="submit">Check</button></div>
+          <p class="err" id="nopeErr" role="alert" aria-live="polite"></p>
+        </form>
+        <p class="small-print">See how it works with a library that's ready:
+          <button class="link" type="button" data-demo="chipublib">Chicago</button> ·
+          <button class="link" type="button" data-demo="seattle">Seattle</button> ·
+          <button class="link" type="button" data-demo="nypl">New York</button> ·
+          <button class="link" type="button" data-demo="bclsnj">Burlington County</button></p>
+        <p class="small-print">Meanwhile, most libraries stream movies free with a library card through Kanopy, Hoopla or Libby.</p>
       </div>
       <div class="card-links">
         <button class="link" type="button" id="howBtn">Can't find it?</button>
         <button class="link" type="button" id="trySeattle">Or try Seattle's</button>
       </div>
-      <p class="how-text" id="howText" hidden>Type your library's website (like <b>spl.org</b>) and press Open, or paste the link from its online catalog. If that catalog's address has <b>bibliocommons.com</b> in it, Nomad Library can open it.</p>
+      <p class="how-text" id="howText" hidden>Type your town or your library's name and pick it from the list. You can also paste your library's website, like <b>spl.org</b>, and press Open. We'll look for the rest.</p>
       <div class="acct-row home-acct" id="homeOut">
         <button class="btn" id="homeCreate">Create a free account</button>
         <button class="btn ghost" id="homeSignin">Sign in</button>

@@ -1086,38 +1086,54 @@ function paintControls() {
 
 // ---- find your library: a list we keep growing, matched as you type ---------------
 
-let LIBS = null;
+// Find your library: every US library system by name or town (public/directory.json), plus the ones we have learned.
+// Entry: [name, city, state, population, slug or 0]. A slug means we can show its movies now.
+let LIBS = null, DIR = null;
+const fold = t => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, " ");
 async function loadLibs() {
   if (LIBS) return LIBS;
-  LIBS = new Map();
-  const [a, b] = await Promise.all([
-    fetch("/libraries.json").then(r => r.json()).catch(() => []),
-    api("/api/libs").catch(() => []),
-  ]);
-  for (const x of a) LIBS.set(x.slug, x.name);
-  for (const [slug, name] of b) LIBS.set(slug, name);
+  LIBS = (async () => {
+    const [dir, learned] = await Promise.all([
+      fetch("/directory.json").then(r => r.json()).then(d => d.libs).catch(() => []),
+      api("/api/libs").catch(() => []),
+    ]);
+    const have = new Set(dir.filter(e => e[4]).map(e => e[4]));
+    const list = dir.slice();
+    for (const [slug, name] of learned) if (!have.has(slug)) { list.push([name, "", "", 0, slug]); have.add(slug); }
+    for (const e of list) e.f = fold(e[0] + " " + e[1] + " " + e[2]);
+    DIR = list;
+    return list;
+  })();
   return LIBS;
 }
-const fold = t => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, " ");
 let sugg = [], suggAt = -1;
+const place = e => [e[1], e[2]].filter(Boolean).join(", ");
+function rank(q) {
+  const words = fold(q).trim().split(/\s+/).filter(Boolean);
+  if (!words.length || !DIR) return [];
+  const hits = [];
+  for (const e of DIR) {
+    if (!words.every(w => e.f.includes(w))) continue;
+    const starts = e.f.startsWith(words[0]) ? 0 : 1;
+    hits.push([e, (e[4] ? 0 : 1) * 0 + starts * 1e9 - e[3]]);
+  }
+  return hits.sort((a, b) => a[1] - b[1]).slice(0, 8).map(h => h[0]);
+}
 function suggest() {
-  const q = fold($("#pickInput").value).trim();
-  const box = $("#libList");
+  const raw = $("#pickInput").value, box = $("#libList");
   $("#nope").hidden = true;
-  if (!q || !LIBS || /[./]/.test($("#pickInput").value)) { box.hidden = true; $("#pickInput").setAttribute("aria-expanded", "false"); sugg = []; return; }
-  const words = q.split(/\s+/);
-  sugg = [...LIBS].filter(([slug, name]) => { const t = fold(name) + " " + slug; return words.every(w => t.includes(w)); })
-    .sort((a, b) => a[1].length - b[1].length).slice(0, 8);
+  if (!raw.trim() || !DIR || /[./]/.test(raw)) { box.hidden = true; $("#pickInput").setAttribute("aria-expanded", "false"); sugg = []; return; }
+  sugg = rank(raw);
   suggAt = sugg.length ? 0 : -1;
   box.innerHTML = sugg.length
-    ? sugg.map(([slug, name], i) => `<li role="option" id="lib-${i}" data-slug="${esc(slug)}" aria-selected="${i === suggAt}">${esc(name)}<small>${esc(slug)}.bibliocommons.com</small></li>`).join("")
-    : `<li class="none">No match yet. Try your library's website, like <b>spl.org</b>, and press Open.</li>`;
+    ? sugg.map((e, i) => `<li role="option" id="lib-${i}" data-i="${i}" aria-selected="${i === suggAt}">${esc(e[0])}<small>${esc(place(e) || (e[4] ? "Canada and beyond" : ""))}${e[4] ? ' · <b class="ready">Ready</b>' : ""}</small></li>`).join("")
+    : `<li class="none">No match yet. Try just your town, or paste your library's website and press Open.</li>`;
   box.hidden = false; $("#pickInput").setAttribute("aria-expanded", "true");
 }
 function moveSugg(d) {
   if (!sugg.length) return;
   suggAt = (suggAt + d + sugg.length) % sugg.length;
-  document.querySelectorAll("#libList li[data-slug]").forEach((li, i) => li.setAttribute("aria-selected", i === suggAt));
+  document.querySelectorAll("#libList li[data-i]").forEach((li, i) => li.setAttribute("aria-selected", i === suggAt));
   $("#pickInput").setAttribute("aria-activedescendant", "lib-" + suggAt);
 }
 $("#pickInput").addEventListener("focus", () => loadLibs().then(suggest));
@@ -1127,8 +1143,52 @@ $("#pickInput").addEventListener("keydown", e => {
   else if (e.key === "ArrowUp") { e.preventDefault(); moveSugg(-1); }
   else if (e.key === "Escape") { $("#libList").hidden = true; }
 });
-$("#libList").addEventListener("mousedown", e => { const li = e.target.closest("li[data-slug]"); if (li) { e.preventDefault(); $("#libList").hidden = true; chooseLibrary(li.dataset.slug); } });
+$("#libList").addEventListener("mousedown", e => { const li = e.target.closest("li[data-i]"); if (li) { e.preventDefault(); $("#libList").hidden = true; pickEntry(sugg[+li.dataset.i]); } });
 document.addEventListener("click", e => { if (!e.target.closest("#pickForm")) $("#libList").hidden = true; });
+
+// A library from the list: open it if we can show it, otherwise say so kindly and count the request.
+function pickEntry(e) {
+  if (!e) return;
+  if (e[4]) return chooseLibrary(e[4]);
+  showUnconnected({ name: e[0], city: e[1], st: e[2] });
+}
+const sentRequests = new Set();
+function requestLibrary(info) {
+  const key = (info.host || `${info.name}|${info.st || ""}`).toLowerCase();
+  if (!key || sentRequests.has(key)) return;
+  sentRequests.add(key);
+  let last = 0;
+  try { last = +localStorage.getItem("nl-req-" + key) || 0; } catch {}
+  if (Date.now() - last < 864e5) return;
+  fetch("/api/request", { method: "POST", headers: { "content-type": "application/json" }, keepalive: true,
+    body: JSON.stringify({ name: info.name || "", city: info.city || "", st: info.st || "", host: info.host || "", vendor: info.vendor || "" }) })
+    .then(r => { if (r.ok) try { localStorage.setItem("nl-req-" + key, String(Date.now())); } catch {} }).catch(() => sentRequests.delete(key));
+}
+function showUnconnected(info) {
+  const where = [info.city, info.st].filter(Boolean).join(", ");
+  $("#nopeTitle").textContent = info.name ? `We can't show ${info.name}${where ? ` (${where})` : ""} yet.` : "We can't show that library yet.";
+  $("#nopeText").textContent = "We've noted that you want it. We add the libraries people ask for most, so every request helps.";
+  $("#nopeErr").textContent = ""; $("#nopeUrl").value = "";
+  $("#pickErr").textContent = ""; $("#libList").hidden = true;
+  $("#nope").hidden = false;
+  $("#nope").scrollIntoView({ block: "nearest", behavior: "smooth" });
+  requestLibrary(info);
+}
+$("#nopeForm").onsubmit = async e => {
+  e.preventDefault();
+  const v = $("#nopeUrl").value.trim();
+  if (!v) return;
+  $("#nopeErr").textContent = "Looking…";
+  try {
+    const info = await api("/api/library?q=" + encodeURIComponent(v));
+    S.lib = info.slug; S.libName = info.name; S.demo = false; S.shelf = "all"; S.sort = ""; clearFilter("all"); S.fmt = "all";
+    save(); boot();
+  } catch (err) {
+    $("#nopeErr").textContent = err.data?.unsupported ? "We couldn't find a catalog we can read on that site yet, but we've noted it." : err.message;
+    if (err.data?.unsupported) requestLibrary({ name: $("#nopeTitle").textContent.replace(/^We can't show |( \(.*\))? yet\.$/g, ""), host: err.data.host, vendor: err.data.vendor });
+  }
+};
+document.addEventListener("click", e => { const d = e.target.closest("[data-demo]"); if (d) chooseLibrary(d.dataset.demo, true); });
 
 async function chooseLibrary(q, demo = false) {
   $("#pickErr").textContent = ""; $("#nope").hidden = true; $("#libList").hidden = true;
@@ -1137,7 +1197,7 @@ async function chooseLibrary(q, demo = false) {
     S.lib = info.slug; S.libName = info.name; S.demo = demo; S.shelf = "all"; S.sort = ""; clearFilter("all"); S.fmt = "all";
     save(); boot();
   } catch (e) {
-    if (e.data?.unsupported) $("#nope").hidden = false;
+    if (e.data?.unsupported) showUnconnected({ name: e.data.host ? `the library at ${e.data.host}` : "", host: e.data.host, vendor: e.data.vendor });
     else $("#pickErr").textContent = e.message;
   }
 }
@@ -1189,14 +1249,16 @@ let typing;
 $("#q").addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(() => { liveQ = false; if (instant() || SNAP?.ver) reload(); }, 180); });
 $("#q").addEventListener("search", () => { if (!$("#q").value) { liveQ = false; reload(); } });
 document.querySelector(".tabs").onclick = e => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); };
-$("#pickForm").onsubmit = e => {
+$("#pickForm").onsubmit = async e => {
   e.preventDefault();
   const v = $("#pickInput").value.trim();
   if (!v) return;
-  if (sugg.length && suggAt >= 0 && !$("#libList").hidden && !/[./]/.test(v)) return chooseLibrary(sugg[suggAt][0]);
-  chooseLibrary(v);
+  if (/[./]/.test(v)) return chooseLibrary(v);                       // a web address: we look for the rest
+  await loadLibs();
+  const list = sugg.length ? sugg : rank(v);
+  if (list.length) return pickEntry(list[Math.max(0, suggAt)]);       // the highlighted library, or the best match for what was typed
+  $("#pickErr").textContent = "We couldn't find that. Try just your town, or paste your library's website.";
 };
-$("#nopeSeattle").onclick = () => chooseLibrary("seattle", true);
 $("#trySeattle").onclick = () => chooseLibrary("seattle", true);
 $("#howBtn").onclick = () => { $("#howText").hidden = !$("#howText").hidden; };
 $("#libBtn").onclick = () => { showHome(); $("#pickInput").focus(); };

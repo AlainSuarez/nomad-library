@@ -8,3 +8,10 @@ Any BiblioCommons library's DVDs and Blu-rays on one browsable shelf. Live: http
 - Trailers: `/t?q=` finds the top YouTube result on first tap and caches it 120 days.
 - Deploy: `CLOUDFLARE_ACCOUNT_ID=b2e213e3c7454d17fdfaf60ecde63e27 npx wrangler pages deploy --project-name nomad-library --branch main` (Sondor account). Retry on upload timeouts.
 - Passkeys are tied to the domain. Move to the custom domain BEFORE launch, or pages.dev passkeys stop working there (backup codes still work).
+
+## Library copies (since 10.11.26)
+- A library opens from a static file `snap/<slug>.json.gz` on GitHub Pages (https://chrisgpresents.github.io/nomad-library-data/snap/), made by the copier in the `nomad-library-data` repo on GitHub Actions. No Worker serves catalog data. The browser keeps its own copy in IndexedDB (6 libraries, used at once whatever its age, refreshed in the background).
+- A library with no copy browses live (`/api/search`). The first visitor's browser sends one `POST /api/want` (once per device per day); the copier reads `GET /api/want` and copies requested libraries, oldest request first.
+- `functions/api/snap.js` and the D1 `chunks` data are the OLD path, kept only as a rollback route until cleanup. Rollback: `git archive pre-static-copies`, then deploy that export with the command above.
+- Tests: `node test/browser.mjs` (real Chrome, whole network mocked; set FIXTURE_DIR to a folder of catalog files for the large-catalog runs). The copier has its own: `node test/e2e.mjs` in nomad-library-data.
+- Limits checked against official docs 10.11.26: Workers Free 100,000 requests/day and 10 ms CPU per request; static files are free and unlimited; GitHub Pages 1 GB site, 100 GB/month soft bandwidth, 10 builds/hour soft.

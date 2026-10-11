@@ -265,6 +265,7 @@ async function liveMore(my = run) {
   // One request at a time per view. A newer view never waits on an older one.
   if (loading === my || page >= pages || S.sort === "top") return;
   loading = my;
+  let failed = false;
   try {
     const d = await api(searchUrl(page + 1));
     if (my !== run) return;
@@ -283,13 +284,15 @@ async function liveMore(my = run) {
         card.outerHTML = cardHTML(r);
       }
     });
-    $("#status").textContent = d.total ? `${d.total.toLocaleString()} titles` : "Nothing here at this library.";
+    $("#status").innerHTML = esc(d.total ? `${d.total.toLocaleString()} titles` : "Nothing here at this library.") + liveNote();
     $("#more").textContent = page < pages ? "Loading more…" : (d.total ? "That's the whole shelf." : "");
     if (page < pages) fetch(searchUrl(page + 1)).catch(() => {});
   } catch (e) {
-    if (my === run) $("#status").textContent = e.message;
+    failed = true;
+    if (my === run) { $("#status").textContent = e.message; $("#more").innerHTML = '<button class="link" id="retryMore">Try again</button>'; }
   } finally { if (loading === my) loading = false; }
-  if (my === run && page < pages && $("#grid").children.length < 12) liveMore(my);
+  // keep filling a short first screen, but never after a failure (that would retry forever)
+  if (!failed && my === run && page < pages && $("#grid").children.length < 12) liveMore(my);
 }
 
 // Rank a whole shelf by IMDb rating, pulling its pages a few at a time.
@@ -356,30 +359,143 @@ function fromRow(x, lib, sc) {
   };
 }
 
-// Everyone asking for the same library shares one download.
-let snapping = null;
+// ---- opening a library: a copy kept on this device, else a plain static file, else browsing live ----------
+// Library copies are static files (made by GitHub, see the nomad-library-data repo), so opening one is a download
+// with no server work. This device keeps its own copy and uses it at once, however old; a newer one is fetched
+// in the background. If nothing is ready quickly, the shelf starts browsing live and the copy joins in later.
+const SNAP_BASE = "https://chrisgpresents.github.io/nomad-library-data/snap/";
+const LIVE_AFTER_MS = 1800;      // no usable copy by then: start browsing live while the download continues
+const FETCH_MS = 60000;          // hard stop for a copy download
+const KEEP_COPIES = 6;           // copies kept on this device, least recently used go first
+const REFRESH_AFTER = 12 * 36e5; // a device copy older than this is refreshed in the background
+
+function validSnap(d) {
+  if (!d || !Array.isArray(d.rows) || !d.rows.length || d.rows.length > 400000 || !Number.isFinite(d.finished)) return false;
+  for (const i of [0, d.rows.length >> 1, d.rows.length - 1]) { const r = d.rows[i]; if (!Array.isArray(r) || r.length !== 15 || typeof r[0] !== "string") return false; }
+  return true;
+}
+
+// Storage on this device. Every call is bounded and optional: if IndexedDB is missing, blocked or full, the site
+// still works, it just downloads the copy again next time.
+let idbState = null;
+function idb() {
+  if (!idbState) idbState = new Promise((res, rej) => {
+    let o;
+    try { o = indexedDB.open("nl-snaps", 1); } catch (e) { return rej(e); }
+    const t = setTimeout(() => rej(new Error("storage did not open")), 2500);
+    o.onupgradeneeded = () => o.result.createObjectStore("s");
+    o.onsuccess = () => { clearTimeout(t); res(o.result); };
+    o.onerror = o.onblocked = () => { clearTimeout(t); rej(o.error || new Error("storage blocked")); };
+  });
+  return idbState;
+}
+const idbReq = (store, mode, fn) => idb().then(db => new Promise((res, rej) => {
+  const tx = db.transaction(store, mode), r = fn(tx.objectStore(store));
+  tx.oncomplete = () => res(r && r.result); tx.onerror = tx.onabort = () => rej(tx.error || new Error("storage failed"));
+}));
+async function idbGet(lib) {
+  try {
+    const rec = await idbReq("s", "readonly", st => st.get(lib));
+    if (!rec || !validSnap(rec.d)) return null;     // a damaged copy is ignored, never shown
+    idbReq("s", "readwrite", st => { const q = st.get("__use"); q.onsuccess = () => st.put({ ...(q.result || {}), [lib]: Date.now() }, "__use"); }).catch(() => {});
+    return rec;
+  } catch { return null; }
+}
+async function idbPut(lib, d) {
+  try {
+    const use = (await idbReq("s", "readonly", st => st.get("__use"))) || {};
+    use[lib] = Date.now();
+    const old = Object.keys(use).sort((a, b) => use[b] - use[a]).slice(KEEP_COPIES);
+    for (const k of old) delete use[k];
+    await idbReq("s", "readwrite", st => { st.put({ saved: Date.now(), d }, lib); st.put(use, "__use"); for (const k of old) st.delete(k); });
+  } catch { /* full or unavailable: skip, the last good copy (if any) stays */ }
+}
+
+async function gunzip(buf) {
+  if (typeof DecompressionStream === "undefined") throw new Error("this browser cannot unpack copies");
+  return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
+}
+// -> { d } on success, { missing: true } when the host has no copy, throws on anything else
+async function fetchStatic(lib) {
+  const r = await fetch(SNAP_BASE + encodeURIComponent(lib) + ".json.gz", { cache: "no-cache", signal: AbortSignal.timeout ? AbortSignal.timeout(FETCH_MS) : undefined });
+  if (r.status === 404) return { missing: true };
+  if (!r.ok) throw new Error("copy host answered " + r.status);
+  const buf = new Uint8Array(await r.arrayBuffer());
+  const d = JSON.parse(buf[0] === 0x1f && buf[1] === 0x8b ? await gunzip(buf) : new TextDecoder().decode(buf));
+  if (!validSnap(d)) throw new Error("the copy did not pass checks");
+  return { d };
+}
+
+// Tell the copier this library is wanted. At most once per library per day per device, never in a loop.
+const wantSent = new Set();
+function wantCopy(lib) {
+  if (wantSent.has(lib)) return;
+  wantSent.add(lib);
+  let last = 0;
+  try { last = +localStorage.getItem("nl-want-" + lib) || 0; } catch {}
+  if (Date.now() - last < 864e5) return;
+  fetch("/api/want", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lib }), keepalive: true })
+    .then(r => { if (r.ok) try { localStorage.setItem("nl-want-" + lib, String(Date.now())); } catch {} }).catch(() => {});
+}
+
+function buildSnap(lib, d) {
+  const films = [], games = [], seenF = new Map();
+  for (const x of d.rows) {
+    const r = fromRow(x, lib, d.sc);
+    rowsById.set(r.id, r);
+    if (r.f === "g") games.push(r); else films.push(r);
+  }
+  return { lib, ver: d.ver || d.finished, finished: d.finished, films: merge(films, seenF), games };
+}
+
+// Everyone asking for the same library shares one attempt; a failed attempt is remembered for 5 minutes so
+// nothing loops. A copy that arrives late waits in LATE and is picked up by the next reload(), so it can never
+// replace a different library or yank a search the visitor is in the middle of.
+let snapping = null, LATE = null;
 function loadSnap() {
-  if (SNAP && SNAP.lib === S.lib && SNAP.ver) return Promise.resolve(SNAP);
-  if (snapping && snapping.lib === S.lib) return snapping.p;
   const lib = S.lib;
-  const p = fetchSnap(lib).finally(() => { if (snapping?.p === p) snapping = null; });
+  if (SNAP && SNAP.lib === lib && (SNAP.ver || Date.now() - SNAP.at < 300e3)) return Promise.resolve(SNAP);
+  if (snapping && snapping.lib === lib) return snapping.p;
+  const p = openCopy(lib).finally(() => { if (snapping?.p === p) snapping = null; });
   snapping = { lib, p };
   return p;
 }
-async function fetchSnap(lib) {
-  try {
-    const d = await api("/api/snap?lib=" + encodeURIComponent(lib));
-    if (lib !== S.lib) return null;
-    if (!d.ver) return (SNAP = { lib, building: true, done: d.done, expect: d.expect });
-    const films = [], games = [], seenF = new Map();
-    for (const x of d.rows) {
-      const r = fromRow(x, lib, d.sc);
-      rowsById.set(r.id, r);
-      if (r.f === "g") games.push(r); else films.push(r);
+const copyNote = snap => snap.loading ? "Getting a fast copy of this library in the background." : snap.why === "error" ? "Couldn't reach the fast copy, so this is loading live." : "This library isn't copied yet, so it loads a little slower.";
+const liveNote = () => SNAP?.building && SNAP.lib === S.lib && !S.coll && !liveQ ? ` <span class="dim">· <span id="snapNote">${copyNote(SNAP)}</span></span>` : "";
+function openCopy(lib) {
+  return new Promise(async resolve => {
+    let settled = false;
+    const settle = v => { if (!settled) { settled = true; resolve(v); } };
+    const mine = v => { if (lib === S.lib) SNAP = v; return v; };       // never let a library the visitor left replace the current one
+    const live = (why, extra = {}) => {
+      const v = mine({ lib, building: true, why, at: Date.now(), ...extra });
+      const n = $("#snapNote"); if (n && lib === S.lib && settled) n.textContent = copyNote(v);
+      settle(v);
+    };
+    const arrive = d => {
+      if (lib !== S.lib) { settle(null); return; }
+      const snap = buildSnap(lib, d);
+      if (!settled) { clearTimeout(timer); settle(mine(snap)); return; }
+      // the shelf is already showing live results: hold the copy until the next reload so a search or scroll is never yanked
+      LATE = { lib, snap };
+      if (!$("#q").value.trim() && !liveQ && !S.coll && !document.querySelector("dialog[open]")) reload();
+    };
+    const timer = setTimeout(() => live("loading", { loading: true }), LIVE_AFTER_MS);
+    try {
+      const cached = await idbGet(lib);
+      if (cached) {                     // use what is on this device right now, whatever its age
+        arrive(cached.d);
+        if (Date.now() - cached.d.finished > REFRESH_AFTER)
+          fetchStatic(lib).then(r => { if (r.d && r.d.finished > cached.d.finished) idbPut(lib, r.d); }).catch(() => {});
+        return;
+      }
+      const r = await fetchStatic(lib);
+      if (r.d) { idbPut(lib, r.d); arrive(r.d); return; }
+      clearTimeout(timer); wantCopy(lib); live("missing");
+    } catch (e) {
+      clearTimeout(timer); wantCopy(lib); live("error");
     }
-    SNAP = { lib, ver: d.ver, finished: d.finished, films: merge(films, seenF), games };
-  } catch (e) { console.warn("instant copy unavailable:", e); SNAP = { lib, building: true, done: 0, expect: 0 }; }
-  return SNAP;
+  });
 }
 
 const instant = () => SNAP && SNAP.lib === S.lib && SNAP.ver && !S.coll && !liveQ;
@@ -438,18 +554,17 @@ function loadMore() { if (snapping) return; if (instant()) snapMore(); else live
 
 async function reload() {
   paintActive();
-  if (S.lib && (!SNAP || SNAP.lib !== S.lib)) {
+  const lib = S.lib;
+  if (LATE && LATE.lib === lib) { SNAP = LATE.snap; LATE = null; }
+  if (lib && (!SNAP || SNAP.lib !== lib)) {
     $("#grid").innerHTML = ""; $("#status").textContent = "Opening your library…"; $("#more").textContent = "";
     await loadSnap();
+    if (S.lib !== lib) return;      // switched libraries while waiting: the newer reload owns the screen
   }
   if (instant()) return snapRender();
-  // live mode: before the weekly copy exists, for collections, and for whole-catalog searches
+  // live mode: while no copy is ready, for collections, and for whole-catalog searches
   S.shelf = S.fmt === "games" ? "all" : S.coll || (GENRES.find(g => g[0] === S.genre)?.[2]) || "all";
   await liveReload();
-  if (SNAP?.building && !S.coll && !liveQ) {
-    const pct = SNAP.expect ? Math.min(99, Math.round(100 * SNAP.done / SNAP.expect)) : 0;
-    $("#status").insertAdjacentHTML("beforeend", ` <span class="dim">· Getting ${esc(S.libName)} ready to open instantly${pct ? ` (${pct}%)` : ""}. It's a little slower until then.</span>`);
-  }
 }
 
 // ---- filters ---------------------------------------------------------------------
@@ -538,7 +653,7 @@ $("#filtBody").addEventListener("input", e => {
 $("#filters").addEventListener("close", () => { liveQ = false; reload(); });
 $("#filtBtn").onclick = openFilters;
 $("#active").addEventListener("click", e => { const b = e.target.closest("[data-clear]"); if (b) { clearFilter(b.dataset.clear); save(); reload(); } });
-document.addEventListener("click", e => { if (e.target.id === "wholeCat") { liveQ = true; reload(); } });
+document.addEventListener("click", e => { if (e.target.id === "wholeCat") { liveQ = true; reload(); } else if (e.target.id === "retryMore") { $("#more").textContent = "Loading more…"; liveMore(); } });
 
 // ---- favorites and watchlist tabs ------------------------------------------------
 

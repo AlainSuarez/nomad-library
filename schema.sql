@@ -30,3 +30,5 @@ CREATE TABLE IF NOT EXISTS libs (
 );
 CREATE TABLE IF NOT EXISTS chunks (slug TEXT NOT NULL, ver INTEGER NOT NULL, seq INTEGER NOT NULL, body TEXT NOT NULL, PRIMARY KEY (slug, ver, seq)) WITHOUT ROWID;
 ALTER TABLE libs ADD COLUMN cover TEXT;
+ALTER TABLE libs ADD COLUMN wanted INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE libs ADD COLUMN wanted_at INTEGER NOT NULL DEFAULT 0;   -- when a visitor first asked for a copy; the copier works oldest request first

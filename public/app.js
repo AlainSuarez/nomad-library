@@ -786,14 +786,14 @@ $("#filters").addEventListener("close", () => { liveQ = false; reload(); });
 $("#filtBtn").onclick = openFilters;
 $("#active").addEventListener("click", e => { const b = e.target.closest("[data-clear]"); if (b) { clearFilter(b.dataset.clear); save(); reload(); } });
 document.addEventListener("click", e => { if (e.target.id === "wholeCat") { liveQ = true; reload(); } else if (e.target.id === "retryMore") { $("#more").textContent = "Loading more…"; liveMore(); } else if (e.target.id === "openReadyCopy") { reload(); } else if (e.target.closest?.("[data-ct-close]")) { toastDismissed = S.lib; paintCopyToast(); } else if (e.target.id === "addCatalog" || e.target.id === "addCatalogToast") askCatalog(); });
-// From the shelf: back to the home page with the catalog box open for this library.
+// From the shelf: back to the home page and its one box, to add the catalog link.
 function askCatalog() {
   const open = $("#detail").open;
   if (open) $("#detail").close();
   setTimeout(() => {                        // after the dialog's own history step settles
     showHome();
-    showUnconnected({ name: S.guest?.name || "", city: S.guest?.city || "", st: S.guest?.st || "" });
-    $("#nopeUrl").focus();
+    $("#pickErr").textContent = "Paste your library's catalog link here, and every movie gets a button that searches your library for it.";
+    $("#pickInput").focus();
   }, open ? 120 : 0);
 }
 
@@ -998,7 +998,7 @@ function libraryStep() {
     <p>Your account opens to it from now on, on every device.</p>
     <div class="stack">
       ${mine ? `<button class="btn" id="keepLib">Use ${esc(libLabel())}</button>` : ""}
-      <button class="btn${mine ? " ghost" : ""}" id="findLib">${mine ? "Pick a different library" : "Find my library"}</button>
+      <button class="btn${mine ? " ghost" : ""}" id="findLib">${mine ? "Use a different library" : "Add my library"}</button>
     </div>
     <button class="link small-print" id="skipLib" style="margin-top:14px">I'll do this later</button>`);
   if (!$("#account").open) $("#account").showModal();
@@ -1135,155 +1135,47 @@ function paintControls() {
   $("#sort").value = S.sort;
 }
 
-// ---- find your library: a list we keep growing, matched as you type ---------------
+// ---- your library: one box, paste the catalog link -------------------------------------
+// BiblioCommons links open the library's own shelf. Any other catalog opens movies, and "Check at" searches that catalog.
 
-// Find your library: every US library system by name or town (public/directory.json), plus the ones we have learned.
-// Entry: [name, city, state, population, slug or 0]. A slug means we can show its movies now.
-let LIBS = null, DIR = null;
-const fold = t => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]+/g, " ");
-async function loadLibs() {
-  if (LIBS) return LIBS;
-  LIBS = (async () => {
-    const [dir, learned] = await Promise.all([
-      fetch("/directory.json").then(r => r.json()).then(d => d.libs).catch(() => []),
-      api("/api/libs").catch(() => []),
-    ]);
-    const have = new Set(dir.filter(e => e[4]).map(e => e[4]));
-    const list = dir.slice();
-    for (const [slug, name] of learned) if (!have.has(slug)) { list.push([name, "", "", 0, slug]); have.add(slug); }
-    for (const e of list) e.f = fold(e[0] + " " + e[1] + " " + e[2]);
-    DIR = list;
-    return list;
-  })();
-  return LIBS;
-}
-let sugg = [], suggAt = -1, suggFor = "";
-const place = e => [e[1], e[2]].filter(Boolean).join(", ");
-function rank(q) {
-  const words = fold(q).trim().split(/\s+/).filter(Boolean);
-  if (!words.length || !DIR) return [];
-  const hits = [];
-  for (const e of DIR) {
-    if (!words.every(w => e.f.includes(w))) continue;
-    const starts = e.f.startsWith(words[0]) ? 0 : 1;
-    hits.push([e, (e[4] ? 0 : 1) * 0 + starts * 1e9 - e[3]]);
-  }
-  return hits.sort((a, b) => a[1] - b[1]).slice(0, 8).map(h => h[0]);
-}
-function suggest() {
-  const raw = $("#pickInput").value, box = $("#libList");
-  suggFor = raw;
-  $("#nope").hidden = true;
-  if (!raw.trim() || !DIR || /[./]/.test(raw)) { box.hidden = true; $("#pickInput").setAttribute("aria-expanded", "false"); sugg = []; return; }
-  sugg = rank(raw);
-  suggAt = sugg.length ? 0 : -1;
-  box.innerHTML = sugg.length
-    ? sugg.map((e, i) => `<li role="option" id="lib-${i}" data-i="${i}" aria-selected="${i === suggAt}">${esc(e[0])}<small>${esc(place(e) || (e[4] ? "Canada and beyond" : ""))}${e[4] ? ' · <b class="ready">Ready</b>' : ""}</small></li>`).join("")
-    : `<li class="none">No match yet. Try just your town, or paste your library's catalog link and press Open.</li>`;
-  box.hidden = false; $("#pickInput").setAttribute("aria-expanded", "true");
-}
-function moveSugg(d) {
-  if (!sugg.length) return;
-  suggAt = (suggAt + d + sugg.length) % sugg.length;
-  document.querySelectorAll("#libList li[data-i]").forEach((li, i) => li.setAttribute("aria-selected", i === suggAt));
-  $("#pickInput").setAttribute("aria-activedescendant", "lib-" + suggAt);
-}
-$("#pickInput").addEventListener("focus", () => loadLibs().then(suggest));
-$("#pickInput").addEventListener("input", () => { $("#pickErr").textContent = ""; loadLibs().then(suggest); });
-$("#pickInput").addEventListener("keydown", e => {
-  if (e.key === "ArrowDown") { e.preventDefault(); moveSugg(1); }
-  else if (e.key === "ArrowUp") { e.preventDefault(); moveSugg(-1); }
-  else if (e.key === "Escape") { $("#libList").hidden = true; }
-});
-$("#libList").addEventListener("mousedown", e => { const li = e.target.closest("li[data-i]"); if (li) { e.preventDefault(); $("#libList").hidden = true; pickEntry(sugg[+li.dataset.i]); } });
-document.addEventListener("click", e => { if (!e.target.closest("#pickForm")) $("#libList").hidden = true; });
-
-// A library from the list: its shelf if we can read it, its catalog if anyone has given us the link, otherwise we ask for it.
-async function pickEntry(e) {
-  if (!e) return;
-  $("#pickInput").value = e[0];
-  if (e[4]) return chooseLibrary(e[4]);
-  const info = { name: e[0], city: e[1], st: e[2] };
-  const known = (await loadCatalogs())[`${info.name}|${info.st}`];
-  if (known) { requestLibrary(info); return enterGuest({ ...info, catalog: readCatalogLink(known) }); }
-  showUnconnected(info);
-}
 const sentRequests = new Set();
+// Counts which catalog systems people use (no IDs), at most once per catalog per device per day.
 function requestLibrary(info) {
   const url = info.catalog?.url || "";
-  const key = (url || info.host || `${info.name}|${info.st || ""}`).toLowerCase();
+  const key = (url || info.host || "").toLowerCase();
   if (!key || sentRequests.has(key)) return;
   sentRequests.add(key);
   let last = 0;
   try { last = +localStorage.getItem("nl-req-" + key) || 0; } catch {}
   if (Date.now() - last < 864e5) return;
   fetch("/api/request", { method: "POST", headers: { "content-type": "application/json" }, keepalive: true,
-    body: JSON.stringify({ name: info.name || "", city: info.city || "", st: info.st || "", host: info.catalog?.host || info.host || "", vendor: info.catalog?.system || info.vendor || "", url }) })
+    body: JSON.stringify({ name: info.name || "", host: info.catalog?.host || info.host || "", vendor: info.catalog?.system || "", url }) })
     .then(r => { if (r.ok) try { localStorage.setItem("nl-req-" + key, String(Date.now())); } catch {} }).catch(() => sentRequests.delete(key));
 }
-let nopeInfo = null;
-// Catalog links for libraries we cannot read (public/catalogs.json, added by hand, plus links visitors have given), keyed "Name|ST".
-let CATALOGS = null;
-const loadCatalogs = () => (CATALOGS ||= Promise.all([
-  fetch("/catalogs.json").then(r => r.json()).catch(() => ({})),
-  api("/api/catalogs").catch(() => ({})),
-]).then(([hand, learned]) => {
-  const out = { ...learned };
-  for (const [k, v] of Object.entries(hand)) out[k] = typeof v === "string" ? v : v.url || "https://" + v.host;
-  return out;
-}));
 // Movies to browse for a library we cannot read; every "Check at" button searches the library's own catalog.
 function enterGuest(info) {
   const cat = info.catalog?.url ? info.catalog : null;
-  S.guest = { name: info.name || "", city: info.city || "", st: info.st || "", catalog: cat };
+  S.guest = { name: info.name || "", catalog: cat };
   S.lib = GUEST; S.libName = S.guest.name; S.demo = false; S.shelf = "all"; S.sort = "pop"; clearFilter("all"); S.fmt = "all";
   toastDismissed = "";
   save(); boot();
   libraryPicked();
 }
-function showUnconnected(info, why) {
-  nopeInfo = { ...info };
-  const where = [info.city, info.st].filter(Boolean).join(", ");
-  $("#nopeTitle").textContent = info.name ? `${info.name}${where ? ` (${where})` : ""}` : "Your library";
-  $("#nopeText").textContent = why || "Paste the link to its catalog and we'll open movies you can check there in one tap.";
-  $("#nopeErr").textContent = ""; $("#nopeUrl").value = "";
-  $("#pickErr").textContent = ""; $("#libList").hidden = true;
-  $("#nope").hidden = false;
-  $("#nope").scrollIntoView({ block: "nearest", behavior: "smooth" });
-  if (info.name) requestLibrary(info);
-}
-// What /api/library says about a link: open the shelf, open movies with the catalog, or ask for the catalog itself.
-function openFound(info) {
-  S.lib = info.slug; S.libName = info.name; S.demo = false; S.shelf = "all"; S.sort = ""; clearFilter("all"); S.fmt = "all";
-  save(); boot();
-  libraryPicked();
-}
-function openOther(d, from = {}) {
-  const lib = { name: from.name || d.name || "", city: from.city || "", st: from.st || "", catalog: d.catalog };
+let websiteOnly = null;     // a library website with no catalog we could find: "Browse movies anyway" still works
+function openOther(d) {
   if (d.unknown || !d.catalog) {
-    showUnconnected({ ...from, name: from.name || d.name || "" }, "We couldn't find the catalog on that page. Open your library's catalog, then copy the address from the top of the page and paste it here.");
-    nopeInfo.fallback = d.catalog;     // "Skip" still opens movies, and the check button opens that website
+    websiteOnly = { name: d.name || "", catalog: d.catalog };
+    $("#pickErr").innerHTML = `That looks like your library's website. Open its catalog, the page where you search for books, and paste that link instead. <button class="link" type="button" id="browseAnyway">Or browse movies anyway</button>`;
     return;
   }
+  const lib = { name: d.name || "", catalog: d.catalog };
   requestLibrary(lib);
   enterGuest(lib);
 }
-$("#nopeForm").onsubmit = async e => {
-  e.preventDefault();
-  const v = $("#nopeUrl").value.trim();
-  if (!v) return;
-  $("#nopeErr").textContent = "Looking…";
-  try { openFound(await api("/api/library?q=" + encodeURIComponent(v))); }
-  catch (err) {
-    if (err.data?.unsupported) openOther(err.data, nopeInfo || {});
-    else $("#nopeErr").textContent = err.message;
-  }
-};
-$("#nopeSkip").onclick = () => enterGuest({ ...(nopeInfo || {}), catalog: nopeInfo?.fallback || null });
 
 async function chooseLibrary(q, demo = false) {
-  $("#pickErr").textContent = ""; $("#nope").hidden = true; $("#libList").hidden = true;
-  const looking = setTimeout(() => { $("#pickErr").textContent = "Looking…"; }, 400);
+  $("#pickErr").textContent = "";
+  const looking = setTimeout(() => { $("#pickErr").textContent = "Opening…"; }, 300);
   try {
     const info = await api("/api/library?q=" + encodeURIComponent(q));
     clearTimeout(looking); $("#pickErr").textContent = "";
@@ -1295,6 +1187,13 @@ async function chooseLibrary(q, demo = false) {
     if (e.data?.unsupported) openOther(e.data);
     else $("#pickErr").textContent = e.message;
   }
+}
+const isLink = v => /^\S+\.[a-z]{2,}(\/\S*)?$/i.test(v.replace(/^https?:\/\//i, ""));
+function openTyped() {
+  const v = $("#pickInput").value.trim();
+  if (!v) { $("#pickErr").textContent = "Paste your library's catalog link first. The 3 steps below show where to find it."; return; }
+  if (!isLink(v)) { $("#pickErr").textContent = "That doesn't look like a link. Paste the web address of your library's catalog. The 3 steps below show where to find it."; return; }
+  chooseLibrary(v);
 }
 
 // ---- back button -------------------------------------------------------------------
@@ -1318,7 +1217,7 @@ addEventListener("popstate", () => {
 
 function showHome(fromPop) {
   if (!fromPop && history.state?.nl === "shelf") history.replaceState({ nl: "home" }, "", "/");
-  $("#pick").hidden = false; $("#shelf").hidden = true; $("#nope").hidden = true;
+  $("#pick").hidden = false; $("#shelf").hidden = true;
   $("#libBtn").hidden = true;   // the home page has its own "Back to" button
   if (S.lib) loadSnap();
   $("#resume").hidden = !S.lib;
@@ -1344,19 +1243,12 @@ let typing;
 $("#q").addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(() => { liveQ = false; if (instant() || SNAP?.ver) reload(); }, 180); });
 $("#q").addEventListener("search", () => { if (!$("#q").value) { liveQ = false; reload(); } });
 document.querySelector(".tabs").onclick = e => { const b = e.target.closest("button"); if (b) setTab(b.dataset.tab); };
-$("#pickForm").onsubmit = async e => {
-  e.preventDefault();
-  const v = $("#pickInput").value.trim();
-  if (!v) return;
-  if (/[./]/.test(v)) return chooseLibrary(v);                       // a web address: we look for the rest
-  await loadLibs();
-  const fresh = suggFor === $("#pickInput").value;                      // the list on screen was made from the text now in the box
-  const list = fresh && sugg.length ? sugg : rank(v);
-  if (list.length) return pickEntry(list[fresh ? Math.max(0, suggAt) : 0]);   // the highlighted library, or the best match for what was typed
-  $("#pickErr").textContent = "We couldn't find that. Try just your town, or paste your library's catalog link.";
-};
+$("#pickForm").onsubmit = e => { e.preventDefault(); $("#pickInput").blur(); openTyped(); };
+// a pasted link opens by itself, no need to find the button
+$("#pickInput").addEventListener("paste", () => setTimeout(() => { if (isLink($("#pickInput").value.trim())) openTyped(); }, 0));
+$("#pickInput").addEventListener("input", () => { $("#pickErr").textContent = ""; });
 $("#trySeattle").onclick = () => chooseLibrary("seattle", true);
-$("#howBtn").onclick = () => { $("#howText").hidden = !$("#howText").hidden; };
+document.addEventListener("click", e => { if (e.target.id === "browseAnyway") enterGuest(websiteOnly || {}); });
 $("#libBtn").onclick = () => { showHome(); $("#pickInput").focus(); };
 $("#home").onclick = e => { e.preventDefault(); showHome(); };
 $("#resume").onclick = () => boot();

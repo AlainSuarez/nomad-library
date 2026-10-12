@@ -178,7 +178,7 @@ async function waitCards(page, min = 1, timeout = 20000) {
 const titles = page => page.$$eval("#grid .card", els => els.slice(0, 40).map(e => e.textContent));
 async function pickLibrary(page, slug) {
   await page.waitForSelector("#pickInput", { visible: true });
-  await page.type("#pickInput", TYPED[slug] || slug);
+  await page.type("#pickInput", `https://${slug}.bibliocommons.com/v2/search`);
   await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
 }
 
@@ -231,7 +231,7 @@ scenario("REAL copy host: the six finished libraries each open from GitHub in a 
     const W = world({ realSnapHost: true, libs: libs.map(l => [l[0], l[1]]) });
     const { page, context } = await newPage(b, W);          // a brand new browser profile: nothing cached
     await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("#pickInput", { visible: true }); await page.type("#pickInput", TYPED[slug]);
+    await page.waitForSelector("#pickInput", { visible: true }); await page.type("#pickInput", `https://${slug}.bibliocommons.com/`);
     const t0 = Date.now(); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
     await page.waitForFunction(n => document.querySelector("#libBtn").textContent.includes(n) && /\d[\d,]* titles/.test(document.querySelector("#status").textContent) && document.querySelectorAll("#grid .card").length >= 12, { timeout: 30000 }, name.split(" ")[0]);
     const dt = Date.now() - t0, st = await status(page), n = +st.match(/([\d,]+) titles/)[1].replace(/,/g, "");
@@ -397,7 +397,7 @@ scenario("rapid library switching: a slow copy for the library you left never re
   await page.evaluate(() => document.querySelector("#libBtn").click()); await sleep(200);
   // back on the home page: choose the other library
   await page.waitForSelector("#pickInput", { visible: true });
-  await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", TYPED.beta);
+  await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", "https://beta.bibliocommons.com/");
   await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
   await waitCards(page, 12);
   await page.waitForFunction(() => /\d,\d{3} titles/.test(document.querySelector("#status").textContent), { timeout: 8000 });
@@ -439,94 +439,70 @@ scenario("favorites, watchlist and account state: a signed-in account's data is 
   ok(!W.reqs.some(r => /delete|logout/.test(r)), "no delete or sign-out request was made");
 });
 
-scenario("finding your library: type a town or name, never a dead end", async b => {
-  const W = world({ websites: { "spl.org": "seattle", "chicagopl.org": "chipublib" }, snap: { seattle: { body: snapBody(makeRows("seattle", 800)) } } });
-  const { page, context } = await newPage(b, W);
+scenario("home page: one box for the catalog link, three steps, a pasted link opens by itself", async b => {
+  const W = world({ snap: { seattle: { body: snapBody(makeRows("seattle", 800)) } } });
+  const { page } = await newPage(b, W, { viewport: { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true } });
   await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector("#pickInput", { visible: true });
-  // 1. a town finds its libraries, connected ones are marked Ready
-  await page.type("#pickInput", "Roxbury"); await page.waitForSelector("#libList li[data-i]", { visible: true });
-  const rows = await page.$$eval("#libList li[data-i]", els => els.map(e => e.textContent));
-  ok(rows.length === 3 && rows.every(r => /Roxbury/.test(r)) && rows[0].includes("Succasunna, NJ"), `"Roxbury" lists all three Roxburys with their towns (${rows.map(r => r.slice(0, 40)).join(" | ")})`);
-  ok(!rows.some(r => /Ready/.test(r)), "libraries we cannot show yet carry no Ready mark");
-  await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", "chicago");
-  await page.waitForFunction(() => /Ready/.test(document.querySelector("#libList")?.textContent || ""), { timeout: 3000 });
-  ok(true, "a connected library is marked Ready");
-  // 2. a library whose catalog we know: straight to movies, no extra screen
-  await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", "denville nj");
-  await page.waitForFunction(() => /Denville Free/.test(document.querySelector("#libList")?.textContent || ""));
-  await page.keyboard.press("Enter"); await waitCards(page, 12);
-  ok(/Denville/.test(await page.$eval("#libBtn", e => e.textContent)), "Denville (catalog known) opens movies at once");
-  // 3. a library nobody has given us a catalog for: one box asking for the link, and a way to skip
-  await page.evaluate(() => document.querySelector("#libBtn").click()); await page.waitForSelector("#pickInput", { visible: true });
-  await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", "roxbury library association");
-  await page.waitForFunction(() => /Roxbury Library Association/.test(document.querySelector("#libList")?.textContent || "")); await page.keyboard.press("Enter");
-  await page.waitForSelector("#nope:not([hidden])", { timeout: 3000 });
-  const nope = await page.$eval("#nope", e => ({ title: e.querySelector("#nopeTitle").textContent, text: e.textContent, skip: e.querySelector("#nopeSkip")?.textContent }));
-  ok(nope.title === "Roxbury Library Association (Roxbury, NY)", `names the library and its town: "${nope.title}"`);
-  ok(/catalog link/i.test(nope.text) && nope.skip === "Skip for now and browse movies", "asks for the catalog link, with a skip");
-  ok(!/BiblioCommons|not found|error|noted/i.test(nope.text), "no jargon and no false promise");
-  await sleep(300);
-  const rq = W.requests.filter(r => r.name === "Roxbury Library Association");
-  ok(rq.length === 1 && rq[0].st === "NY", `request counted once (${JSON.stringify(rq[0])})`);
-  // 4. paste the catalog link: movies open and Check goes to that catalog's own search
-  await page.type("#nopeUrl", "https://roxburyny.aspendiscovery.org/?browseCategory=new_dvds"); await page.evaluate(() => document.querySelector("#nopeForm").requestSubmit());
-  await waitCards(page, 12); await sleep(800);
-  await page.click("#grid .card .cover"); await sleep(400);
-  const d = await page.$eval("#detailBody", e => ({ href: [...e.querySelectorAll("a")].find(a => /^Check at/.test(a.textContent))?.href, label: [...e.querySelectorAll("a")].find(a => /^Check at/.test(a.textContent))?.textContent }));
-  ok(d.href?.startsWith("https://roxburyny.aspendiscovery.org/Search/Results?lookfor=") && d.label === "Check at Roxbury Library Association", `Check searches that catalog (${d.label}: ${d.href?.slice(0, 70)})`);
-  ok(W.learned["Roxbury Library Association|NY"] === "https://roxburyny.aspendiscovery.org/?browseCategory=new_dvds", "the link is remembered for the next visitor from that library");
-  await page.close();
-  // 5. the next visitor from that library skips the box
-  const W2 = world({ learned: { ...W.learned } });
-  const p2 = (await newPage(b, W2)).page;
-  await p2.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" }); await p2.waitForSelector("#pickInput", { visible: true });
-  await p2.type("#pickInput", "roxbury library association"); await p2.waitForFunction(() => /Roxbury Library Association/.test(document.querySelector("#libList")?.textContent || "")); await p2.keyboard.press("Enter");
-  await waitCards(p2, 12);
-  ok(await p2.$eval("#nope", e => e.hidden), "the next person from Roxbury NY goes straight to movies");
-  // 6. same day, same device: asking again does not count twice
-  const p3 = (await newPage(b, W, { ctx: context })).page;
-  const before = W.requests.length;
-  await p3.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" }); await p3.waitForSelector("#pickInput", { visible: true });
-  await p3.type("#pickInput", "roxbury library association"); await p3.waitForFunction(() => /Roxbury Library Association/.test(document.querySelector("#libList")?.textContent || "")); await p3.keyboard.press("Enter"); await sleep(600);
-  ok(W.requests.length === before, "the same device asking again the same day is not counted twice");
+  await page.waitForSelector("#pickInput", { visible: true }); await sleep(400);
+  const home = await page.evaluate(() => ({
+    inputs: [...document.querySelectorAll("#pick input")].filter(e => e.offsetParent).length,
+    buttons: [...document.querySelectorAll("#pick button")].filter(e => e.offsetParent && /open/i.test(e.textContent)).length,
+    label: document.querySelector("#pickForm label").textContent, steps: [...document.querySelectorAll(".how-steps li")].map(l => l.textContent),
+    list: !!document.querySelector("#libList"), dir: performance.getEntriesByType("resource").some(r => r.name.includes("directory.json")) }));
+  ok(home.inputs === 1 && home.buttons === 1, `one box and one Open button (${home.inputs} / ${home.buttons})`);
+  ok(home.label === "Paste your library's catalog link" && home.steps.length === 3, `label and 3 steps: "${home.label}"`);
+  ok(!home.list && !home.dir, "no town search and no library directory download");
+  try { await page.screenshot({ path: path.join(os.tmpdir(), "nl-home-one-box.png") }); } catch {}
+  // a name is not a link: a clear line pointing at the steps
+  await page.type("#pickInput", "Potsdam Public Library"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit()); await sleep(200);
+  ok(/doesn't look like a link/.test(await page.$eval("#pickErr", e => e.textContent)), "a typed name gets pointed at the 3 steps");
+  // pasting a link opens it with no button press
+  await page.$eval("#pickInput", e => { e.value = ""; e.focus(); });
+  await page.evaluate(() => { const i = document.querySelector("#pickInput"); i.value = "https://roxbury.aspendiscovery.org/?browseCategory=x"; i.dispatchEvent(new ClipboardEvent("paste", { bubbles: true })); });
+  await waitCards(page, 12);
+  ok(/Roxbury/.test(await page.$eval("#libBtn", e => e.textContent)), "a pasted link opened by itself");
+  ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
 });
 
 scenario("a library we cannot read yet: browse the nationwide shelf and check titles at your library", async b => {
-  const W = world({});
+  const W = world({ pages: { "robeson.nccardinal.org": "<title>Robeson County Public Library | NC Cardinal</title>" } });
   const { page } = await newPage(b, W);
   await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#pickInput", { visible: true });
-  await page.type("#pickInput", "robeson county"); await page.waitForFunction(() => /Robeson County/.test(document.querySelector("#libList")?.textContent || "")); await page.keyboard.press("Enter");
+  await page.type("#pickInput", "https://robeson.nccardinal.org/eg/opac/home"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
   const t0 = Date.now(); await waitCards(page, 12);
-  note("guest mode: pick a library -> first movies (ms)", Date.now() - t0);
-  ok(/Robeson County Public Library/.test(await page.$eval("#pickInput", e => e.value)), "picking a library fills the search box with its name");
-  ok(/Robeson County Public Library/.test(await page.$eval("#libBtn", e => e.textContent)), "header names the visitor's library");
+  note("guest mode: paste a catalog link -> first movies (ms)", Date.now() - t0);
+  ok(/Robeson County Public Library/.test(await page.$eval("#libBtn", e => e.textContent)), "header names the library (from its catalog's page title)");
   const st = await status(page); ok(/\d[\d,]* titles/.test(st), `a real nationwide shelf: "${st.trim().slice(0, 40)}"`);
   ok((await page.$$("#grid .avail")).length === 0, "no on-the-shelf / all-out labels (we cannot know)");
   ok(!/DVD|Blu-ray/.test((await page.$$eval("#grid .meta", e => e.slice(0, 20).map(x => x.textContent))).join(" ")), "no format shown either");
   ok(await page.$eval("#fmt", e => getComputedStyle(e).display === "none"), "the Both / Blu-ray / DVD / Games switch is hidden");
+  ok(await page.$eval("#sort", e => e.value === "pop" && e.options[0].textContent === "Most popular"), "opens on Most popular");
   const card = await page.$eval("#copyToast", e => e.textContent).catch(() => "");
   ok(/popular movies from libraries across the country/.test(card) && /Check at Robeson County Public Library/.test(card), `corner card explains it once: "${card.slice(0, 90)}"`);
   await page.click("#filtBtn"); await sleep(200);
   ok(!(await page.$("#onShelfF")), "the filters have no 'On the shelf now' toggle");
   await page.evaluate(() => document.querySelector("#filters").close()); await sleep(500);
   await page.click("#grid .card .cover"); await sleep(400);
-  const d = await page.$eval("#detailBody", e => ({ links: [...e.querySelectorAll("a")].map(a => [a.textContent.trim(), a.href]), text: e.textContent, title: e.querySelector("h2").textContent }));
+  const d = await page.$eval("#detailBody", e => ({ links: [...e.querySelectorAll("a")].map(a => [a.textContent.trim(), a.href]), text: e.textContent }));
   const check = d.links.find(l => /^Check at/.test(l[0]));
-  ok(check && check[0] === "Check at Robeson County Public Library", `detail has the button: "${check?.[0]}"`);
+  ok(check && check[0] === "Check at Robeson County Public Library" && check[1].startsWith("https://robeson.nccardinal.org/eg/opac/results?query="), `detail button searches the catalog: "${check?.[0]}"`);
   ok(!/Place a hold|Get in line|On the shelf|All checked out/.test(d.text), "no hold button and no shelf status");
   ok(d.links.some(l => /Trailer/.test(l[0])) && d.links.some(l => /IMDb/.test(l[0])), "trailer and IMDb are still there");
   ok(W.searchReqs.length === 0 && W.availReqs.length === 0 && W.wants.length === 0 && W.oldSnapCalls === 0, "no live search, availability, copy request or old snapshot call");
-  // every known catalog: the button searches that library's own catalog, never a web search
-  for (const [typed, expectStart] of [["robeson county", "https://robeson.nccardinal.org/eg/opac/results?query="], ["denville nj", "https://denville.aspendiscovery.org/Search/Results?lookfor="],
-    ["pottstown", "https://mclinc.polarislibrary.com/polaris/search/searchresults.aspx?ctx=1.1033.0.0.1&type=Keyword&term="], ["pottsville", "https://pottsville.chilipac.com/r1s/eg/opac/results?query="], ["free library of philadelphia", "https://catalog.freelibrary.org/"]]) {
+  // each catalog system: the button searches that library's own catalog, never a web search
+  for (const [pasted, expectStart] of [["https://denville.aspendiscovery.org/", "https://denville.aspendiscovery.org/Search/Results?lookfor="],
+    ["https://mclinc.polarislibrary.com/polaris/logon.aspx?ctx=1.1033.0.0.1&Header=1", "https://mclinc.polarislibrary.com/polaris/search/searchresults.aspx?ctx=1.1033.0.0.1&type=Keyword&term="],
+    ["https://pottsville.chilipac.com/r1s/eg/opac/home", "https://pottsville.chilipac.com/r1s/eg/opac/results?query="],
+    ["https://catalog.lacountylibrary.org/client/en_US/default", "https://catalog.lacountylibrary.org/client/en_US/default/search/results?qu="],
+    ["https://mdpls.na.iiivega.com/", "https://mdpls.na.iiivega.com/search?query="], ["catalog.freelibrary.org", "https://catalog.freelibrary.org/"]]) {
     await page.evaluate(() => document.querySelector("#detail").close()).catch(() => {}); await sleep(500);
     await page.evaluate(() => document.querySelector("#libBtn").click()); await page.waitForSelector("#pickInput", { visible: true });
-    await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", typed); await page.waitForSelector("#libList li[data-i]"); await page.keyboard.press("Enter");
+    await page.$eval("#grid", e => { e.innerHTML = ""; });
+    await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", pasted); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
     await waitCards(page, 12); await sleep(300); await page.click("#grid .card .cover"); await sleep(400);
     const href = await page.$eval("#detailBody", e => [...e.querySelectorAll("a")].find(a => /^Check at/.test(a.textContent))?.href);
-    ok(href && href.startsWith(expectStart) && !/google/.test(href), `${typed}: the button goes straight to the library's own catalog (${href?.slice(0, 90)})`);
+    ok(href && href.startsWith(expectStart) && !/google/.test(href), `${pasted.slice(0, 40)}: searches the library's own catalog (${href?.slice(0, 80)})`);
   }
   ok(!(await page.evaluate(() => document.documentElement.innerHTML)).includes("google.com/search"), "no Google search link anywhere");
   ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
@@ -549,7 +525,7 @@ scenario("finding your library: paste any catalog link or website, no second pas
   // Chris's own example: an Aspen catalog behind a bot wall
   await paste("https://roxbury.aspendiscovery.org/?browseCategory=roxbury_new_york_times_best_sellers");
   await waitCards(page, 12);
-  ok(await page.$eval("#nope", e => e.hidden), "the Roxbury link goes straight to movies, no second screen");
+  ok(!(await page.$("#nope")), "the Roxbury link goes straight to movies, no second screen");
   ok(/Roxbury/.test(await page.$eval("#libBtn", e => e.textContent)), "named from the link: Roxbury");
   let h = await checkHref();
   ok(h && h[0] === "Check at Roxbury" && h[1].startsWith("https://roxbury.aspendiscovery.org/Search/Results?lookfor="), `Check at Roxbury searches its catalog (${h?.[1]?.slice(0, 70)})`);
@@ -565,9 +541,9 @@ scenario("finding your library: paste any catalog link or website, no second pas
   ok(h && h[1].startsWith("https://find.minlib.net/Search/Results?lookfor="), `a walled catalog on its own domain still gets a title search (${h?.[1]?.slice(0, 60)})`);
   // a website with no catalog link: we ask for the catalog itself, and skipping still works
   await paste("smalltownlib.org");
-  await page.waitForSelector("#nope:not([hidden])", { timeout: 4000 });
-  ok(/couldn't find the catalog/.test(await page.$eval("#nopeText", e => e.textContent)), "a site without a catalog link asks for the catalog link");
-  await page.click("#nopeSkip"); await waitCards(page, 12);
+  await page.waitForSelector("#browseAnyway", { timeout: 4000 });
+  ok(/looks like your library's website/.test(await page.$eval("#pickErr", e => e.textContent)), "a website without a catalog link asks for the catalog link, in the same box");
+  await page.click("#browseAnyway"); await waitCards(page, 12);
   h = await checkHref();
   ok(h && h[1].startsWith("https://smalltownlib.org"), `skipping still opens movies; Check opens their website (${h?.[1]})`);
   // a BiblioCommons library website opens its real shelf
@@ -577,12 +553,12 @@ scenario("finding your library: paste any catalog link or website, no second pas
   const n0 = W.requests.length;
   await paste("qqzzxxww"); await sleep(400);
   const err = await page.$eval("#pickErr", e => e.textContent);
-  ok(/town|catalog link/.test(err) && !/not found/i.test(err) && W.requests.length === n0, `nonsense gets a helpful line: "${err}"`);
+  ok(/link/.test(err) && !/not found/i.test(err) && W.requests.length === n0, `nonsense gets a helpful line: "${err}"`);
   ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
 });
 
 scenario("sign-up: a new account sets up any library, saves it, and another device opens to it", async b => {
-  const W = world({});
+  const W = world({ pages: { "mclinc.polarislibrary.com": "<title>MCLINC Library Catalog</title>" } });
   const { page } = await newPage(b, W);
   await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#pickInput", { visible: true });
@@ -597,10 +573,10 @@ scenario("sign-up: a new account sets up any library, saves it, and another devi
   ok(/set up your library/.test(step) && !!(await page.$("#findLib")), `the library step appears and works: "${step.replace(/\s+/g, " ").slice(0, 60)}"`);
   await page.evaluate(() => document.querySelector("#findLib").click()); await sleep(600);
   ok(await page.$eval("#pickInput", e => document.activeElement === e && !document.querySelector("#account").open), "it hands over to the library search with the box ready");
-  await page.type("#pickInput", "pottstown"); await page.waitForSelector("#libList li[data-i]"); await page.keyboard.press("Enter");
+  await page.type("#pickInput", "https://mclinc.polarislibrary.com/polaris/logon.aspx?ctx=1.1033.0.0.1"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
   await waitCards(page, 12); await sleep(500);
   const last = W.puts[W.puts.length - 1]?.data || {};
-  ok(last.lib === "shelf" && last.guest?.catalog?.url?.includes("mclinc.polarislibrary.com") && last.libName === "Pottstown Regional Public Library", `the library and its catalog are saved to the account right away (${JSON.stringify({ lib: last.lib, name: last.libName })})`);
+  ok(last.lib === "shelf" && last.guest?.catalog?.url?.includes("mclinc.polarislibrary.com") && last.libName === "MCLINC Library Catalog", `the library and its catalog are saved to the account right away (${JSON.stringify({ lib: last.lib, name: last.libName })})`);
   ok(/saved to your account/.test(await page.evaluate(() => document.querySelector(".toast")?.textContent || "")), "a short confirmation");
   ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
   // another device: signs in, opens straight to the same library with the same Check link
@@ -608,21 +584,11 @@ scenario("sign-up: a new account sets up any library, saves it, and another devi
   const p2 = (await newPage(b, W2)).page;
   await p2.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
   await openSaved(p2); await waitCards(p2, 12);
-  ok(/Pottstown/.test(await p2.$eval("#libBtn", e => e.textContent)), "the other device opens to Pottstown");
+  ok(/MCLINC/.test(await p2.$eval("#libBtn", e => e.textContent)), "the other device opens to the same library");
   await p2.click("#grid .card .cover"); await sleep(400);
   const href = await p2.$eval("#detailBody", e => [...e.querySelectorAll("a")].find(a => /^Check at/.test(a.textContent))?.href);
   ok(href?.includes("mclinc.polarislibrary.com/polaris/search/"), "and its Check button searches the same catalog");
   ok(p2.errors.length === 0, `no page errors ${p2.errors.slice(0, 1)}`);
-});
-
-scenario("finding your library: typing a name and pressing Open picks the best match", async b => {
-  const W = world({ snap: { bclsnj: { body: snapBody(makeRows("bclsnj", 900)) } } });
-  const { page } = await newPage(b, W);
-  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector("#pickInput", { visible: true });
-  await page.type("#pickInput", "Burlington County NJ"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
-  await waitCards(page, 12);
-  ok(/Burlington County/.test(await page.$eval("#libBtn", e => e.textContent)), "Open without clicking a suggestion still finds the library");
 });
 
 scenario("visit counter: one anonymous tick per device per day, new vs returning, silent without storage", async b => {
@@ -661,7 +627,7 @@ scenario("narrow phone layout: no sideways scrolling on home, shelf, detail", as
   ok(d.l >= -1 && d.r <= d.w + 1, `detail sheet fits the screen (${Math.round(d.l)}..${Math.round(d.r)} of ${d.w})`);
   await page.evaluate(() => document.querySelector("#detail").close()); await sleep(500);   // closing a dialog triggers a delayed history.back()
   await page.evaluate(() => document.querySelector("#libBtn").click());
-  await page.waitForSelector("#pickInput", { visible: true }); await page.type("#pickInput", TYPED.beta); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
+  await page.waitForSelector("#pickInput", { visible: true }); await page.type("#pickInput", "https://beta.bibliocommons.com/"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
   await page.waitForSelector("#copyToast", { timeout: 8000 });
   const m = await page.$eval("#copyToast", e => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, b: r.bottom, w: innerWidth, h: innerHeight }; });
   ok(m.l >= 0 && m.r <= m.w && m.b <= m.h, `corner card fits a phone screen (${Math.round(m.l)}..${Math.round(m.r)} of ${m.w})`);

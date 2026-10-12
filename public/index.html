@@ -50,31 +50,20 @@
     </div>
     <div class="hero-card">
       <button class="btn resume" id="resume" hidden></button>
-      <form id="pickForm" class="pick-form" autocomplete="off">
-        <label for="pickInput">Find your library</label>
+      <form id="pickForm" class="pick-form" autocomplete="off" novalidate>
+        <label for="pickInput">Paste your library's catalog link</label>
         <div class="row">
-          <input id="pickInput" type="text" autocomplete="off" placeholder="Library name, town or catalog link" role="combobox" aria-expanded="false" aria-controls="libList" aria-autocomplete="list">
+          <input id="pickInput" type="text" inputmode="url" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://">
           <button type="submit">Open</button>
         </div>
-        <ul class="suggest" id="libList" role="listbox" hidden></ul>
         <p class="err" id="pickErr" role="alert" aria-live="polite"></p>
       </form>
-      <div class="nope" id="nope" hidden>
-        <p><b id="nopeTitle"></b></p>
-        <p id="nopeText"></p>
-        <form id="nopeForm" class="nope-form" autocomplete="off">
-          <label for="nopeUrl">Your library's catalog link</label>
-          <div class="row"><input id="nopeUrl" type="text" inputmode="url" placeholder="Paste it here" autocomplete="off"><button type="submit">Open</button></div>
-          <p class="err" id="nopeErr" role="alert" aria-live="polite"></p>
-        </form>
-        <p class="small-print">Not sure where it is? Open your library's website, tap Catalog or Search, then copy the address from the top of the page.</p>
-        <p><button class="link small-print" type="button" id="nopeSkip">Skip for now and browse movies</button></p>
-      </div>
-      <div class="card-links">
-        <button class="link" type="button" id="howBtn">Can't find it?</button>
-        <button class="link" type="button" id="trySeattle">Or try Seattle's</button>
-      </div>
-      <p class="how-text" id="howText" hidden>Type your town or your library's name and pick it from the list. You can also open your library's online catalog, copy the address from the top of the page, paste it here and press Open.</p>
+      <ol class="how-steps">
+        <li>Go to your library's website and open its catalog, the page where you search for books.</li>
+        <li>Copy the web address at the top of that page.</li>
+        <li>Paste it in the box above.</li>
+      </ol>
+      <p class="card-links"><button class="link" type="button" id="trySeattle">Want a look first? Try Seattle's library.</button></p>
     </div>
   </section>
 

@@ -185,7 +185,9 @@ input:focus-visible, select:focus-visible { outline-offset: 0; }
 /* home card, simplified */
 .card-links { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 2px; }
 .card-links .link { font-size: 14px; font-weight: 500; color: var(--ink-2); }
-.how-text { font-size: 14px; color: var(--ink-2); margin: 10px 0 0; }
+.how-steps { margin: 14px 0 18px; padding-left: 20px; font-size: 14px; line-height: 1.5; color: var(--ink-2); }
+.how-steps li { margin: 0 0 6px; padding-left: 2px; }
+.pick-form .err .link { color: inherit; font-size: inherit; }
 .home-acct { border-top: 1px solid var(--rule); margin-top: 20px; padding-top: 20px; }
 .hero-card .pick-form .err:empty { min-height: 0; margin: 0 0 8px; }
 .foot .legal { flex-wrap: wrap; }

@@ -1,5 +1,5 @@
 // Network first for the app, cache first for the ratings index (it only changes on rebuild).
-const VERSION = "nl-30";
+const VERSION = "nl-31";
 self.addEventListener("install", e => self.skipWaiting());
 self.addEventListener("activate", e => e.waitUntil(
   caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim())

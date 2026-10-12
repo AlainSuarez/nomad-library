@@ -109,7 +109,12 @@ export async function onRequestGet(ctx) {
   const looksLikeLink = /[./]/.test(q);
   if (!info && looksLikeLink) {
     const direct = readCatalogLink(q);
-    if (direct?.system && direct.system !== "bibliocommons") other = { catalog: direct, name: nameFromHost(direct.host) };
+    if (direct?.system && direct.system !== "bibliocommons") {
+      // the catalog's own page title usually names the library ("Catalog Home | Minuteman Library Network"); a blocked page just goes unnamed
+      let name = nameFromHost(direct.host);
+      if (!name) try { const g = await get(direct.url, 4000); if (g.status < 400) name = nameInPage(g.html); } catch {}
+      other = { catalog: direct, name };
+    }
     else {
       const found = await fromWebsite(ctx, q);
       if (found.slug) {

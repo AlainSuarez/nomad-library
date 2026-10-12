@@ -22,6 +22,15 @@ const SYSTEMS = [
 // Words that are never a library's name, for naming a library from its catalog address.
 const GENERIC = /^(www\d?|catalog|catalogue|search|find|opac|webpac|pac|ls2pac|discover|discovery|encore|polaris|library|lib|my|online|ent|apps?|portal|vega|na|bc|cat|ils|sirsi|koha|eg|evergreen|go|new|home|secure)$/i;
 
+const SEARCH_KEYS = /^(q|query|term|terms|lookfor|searchterm|searchterms|search|keyword|keywords|kw|qu|searcharg|searchtext|text|t)$/i;
+// A link that is itself a catalog page (not a library homepage): "catalog.x.org", "x.org/catalog", "x.org/search?q=...".
+export function looksLikeCatalog(cat) {
+  if (!cat) return false;
+  if (cat.system || cat.find) return true;
+  const u = new URL(cat.url);
+  return /^(catalog|catalogue|search|find|opac|webpac|discover|discovery|encore|polaris|pac|ls2pac|library-catalog)\./i.test(u.hostname) || /catalog|opac|\/search|discover/i.test(u.pathname);
+}
+
 export function catalogSystem(href) {
   return (SYSTEMS.find(([, re]) => re.test(href)) || [""])[0];
 }
@@ -62,7 +71,11 @@ export function readCatalogLink(input, knownSystem = "") {
     }
     case "carl": find = `${o}/?section=search&term={q}`; break;
     case "spydus": find = `${o}/cgi-bin/spydus.exe/ENQ/WPAC/BIBENQ?ENTRY={q}&ENTRY_NAME=BS&ENTRY_TYPE=K&NRECS=20`; break;
-    default: find = "";
+    default: {
+      // a catalog we don't know by name: if the link is a search, put the title where the search words were
+      const key = [...qp.keys()].find(k => SEARCH_KEYS.test(k) && qp.get(k));
+      if (key) { const v = new URL(href); v.searchParams.set(key, "QQQ"); find = v.href.replace("QQQ", "{q}"); }
+    }
   }
   return { url: href, host: u.hostname.replace(/^www\./, ""), system, find };
 }

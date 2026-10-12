@@ -4,7 +4,7 @@
 //      "Check at" button searches that catalog for the title (opened by the visitor's own browser, so bot walls don't matter)
 // Most people know their library's website, not its catalog address, so a homepage works too: we read it for the catalog.
 import { json, slugFrom, libraryInfo, gw, SLUG_RE } from "../../lib/core.js";
-import { readCatalogLink, catalogSystem, nameFromHost } from "../../public/catalog.js";
+import { readCatalogLink, catalogSystem, nameFromHost, looksLikeCatalog } from "../../public/catalog.js";
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 const NOPE = "We can't show that library yet.";
@@ -19,17 +19,26 @@ const PAGE_SIGNS = [["aspen", /aspendiscovery|Aspen Discovery/i], ["vega", /iiiv
   ["enterprise", /SirsiDynix Enterprise|\/client\/en_US\//], ["koha", /cgi-bin\/koha|Koha online catalog/i], ["evergreen", /\/eg\/opac|Evergreen/],
   ["encore", /\/iii\/encore/i], ["carl", /CARL[•.]?Connect|ls2pac/i]];
 const systemInPage = html => (PAGE_SIGNS.find(([, re]) => re.test(html)) || [""])[0];
+const decode = t => t.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+  .replace(/&amp;/g, "&").replace(/&rsquo;|&lsquo;/g, "'").replace(/&ndash;|&mdash;/g, "-").replace(/&nbsp;/g, " ");
 // "Home | Pottstown Regional Public Library" -> "Pottstown Regional Public Library"
 const nameInPage = html => {
-  const t = (html.match(/<title[^>]*>([^<]{3,160})<\/title>/i) || [])[1] || "";
-  const part = t.replace(/&amp;/g, "&").replace(/&#0?39;|&rsquo;/g, "'").split(/\s[|–—-]\s|\s::\s/).map(x => x.trim()).find(x => /librar/i.test(x) && x.length <= 80);
+  const t = decode((html.match(/<title[^>]*>([^<]{3,200})<\/title>/i) || [])[1] || "");
+  const part = t.split(/\s[|–—-]\s|\s::\s/).map(x => x.trim().replace(/^(welcome to|visit us at|home of)\s+(the\s+)?/i, "")).find(x => /librar/i.test(x) && x.length <= 80);
   return part || "";
 };
+// Every address on the page that is plainly a library catalog, in page order. One cheap scan, so a big homepage stays fast.
+const CATALOG_URL = /https?:\/\/[^\s"'<>()]*?(?:bibliocommons\.com|aspendiscovery\.org|iiivega\.com|\/iii\/encore|polarislibrary\.com|\/polaris\/|\.sirsi\.net|\/client\/[a-z]{2}_[A-Z]{2}|\/eg2?\/opac|\/cgi-bin\/koha|\/search~S\d|ls2pac|biblionix\.com|booksys\.net|spydus)[^\s"'<>()]*/g;
+function catalogUrls(html) {
+  const out = [];
+  for (const m of html.matchAll(CATALOG_URL)) { const u = decode(m[0]); if (!/gateway\.bibliocommons|cdn|assets|\.(js|css|png|jpe?g|svg|gif)(\?|$)/i.test(u) && !out.includes(u)) out.push(u); if (out.length >= 8) break; }
+  return out;
+}
 const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
 
 async function get(url, ms = 9000) {
   const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "text/html" }, redirect: "follow", cf: { cacheTtl: 86400 }, signal: AbortSignal.timeout(ms) });
-  const html = (await r.text().catch(() => "")).slice(0, 150000);   // a "blocked" page can still name the catalog system
+  const html = (await r.text().catch(() => "")).slice(0, 400000);   // a "blocked" page can still name the catalog system
   return { url: r.url || url, status: r.status, html };
 }
 function slugIn(url, html) {
@@ -60,22 +69,25 @@ async function fromWebsite(ctx, input) {
     if (slug) return { slug, host };
     if (catalogSystem(finalUrl)) return { catalog: readCatalogLink(finalUrl), name };
     pageSystem = systemInPage(first.html.slice(0, 80000));
-    // links on the page: one that is plainly a catalog wins; otherwise follow up to three that say "Catalog" or "Search"
+    // an address on the page that is plainly a catalog wins; otherwise follow up to three links that say "Catalog" or "Search"
+    for (const u of catalogUrls(first.html)) if (catalogSystem(u) && catalogSystem(u) !== "bibliocommons" && !SOCIAL.test(u)) return { catalog: readCatalogLink(u), name };
     const links = [];
-    for (const m of first.html.matchAll(/<a\s[^>]*?href=["']([^"'#][^"']*)["'][^>]*>([\s\S]{0,200}?)<\/a>/gi)) {
-      const href = m[1].replace(/&amp;/g, "&"), text = m[2].replace(/<[^>]+>/g, " ");
+    for (const m of first.html.slice(0, 200000).matchAll(/<a\s[^>]*?href=["']([^"'#][^"']*)["'][^>]*>([^<]{0,80})/gi)) {
+      const href = decode(m[1]), text = m[2];
       if (/^(mailto|tel|javascript):/i.test(href)) continue;
       let abs; try { abs = new URL(href, finalUrl).href; } catch { continue; }
-      if (/\.bibliocommons\.com/i.test(abs)) return { slug: slugFrom(abs), host };
-      if (catalogSystem(abs) && !SOCIAL.test(abs)) return { catalog: readCatalogLink(abs), name };
       if (/catalog|opac|search the|find (books|a book|materials)|library catalog|discover/i.test(text + " " + href) && !SOCIAL.test(abs) && !links.includes(abs)) links.push(abs);
+      if (links.length >= 3) break;
     }
     for (const u of links.slice(0, 3)) {
       try {
         const g = await get(u, 7000);
         slug = g.status < 400 && slugIn(g.url, g.html);
         if (slug) return { slug, host };
-        const sys = catalogSystem(g.url) || systemInPage(g.html.slice(0, 80000));
+        if (catalogSystem(g.url)) return { catalog: readCatalogLink(g.url), name };
+        const inner = catalogUrls(g.html).find(x => catalogSystem(x) && catalogSystem(x) !== "bibliocommons");
+        if (inner) return { catalog: readCatalogLink(inner), name };
+        const sys = systemInPage(g.html.slice(0, 80000));
         if (sys) return { catalog: readCatalogLink(g.url, sys), name };
       } catch {}
     }
@@ -110,7 +122,8 @@ export async function onRequestGet(ctx) {
         }
       }
       if (!info && found.catalog) other = { catalog: found.catalog, name: found.name || nameFromHost(found.catalog.host) };
-      else if (!info && direct) other = { catalog: { ...direct, url: found.page || direct.url }, name: found.name || "", unknown: true };
+      // nothing recognizable: a catalog page of a kind we don't know is still their catalog; a plain homepage means we ask for the catalog link
+      else if (!info && direct) other = looksLikeCatalog(direct) ? { catalog: direct, name: found.name || "" } : { catalog: { ...direct, url: found.page || direct.url }, name: found.name || "", unknown: true };
     }
   }
   if (!info) {

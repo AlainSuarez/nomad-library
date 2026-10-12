@@ -1208,30 +1208,33 @@ document.addEventListener("submit", async e => {
     msg.classList.add("ok");
     msg.textContent = kind === "library" ? `Thanks. We'll email you when ${S.libName ? S.libName + "'s" : "your library's"} shelves are ready.` : "Thanks. You're on the list.";
     f.querySelector(".row").hidden = true; f.querySelector(".check")?.remove();
+    const card = f.closest("#updToast"); if (card) setTimeout(() => card.remove(), 2500);
   } catch (err) { msg.textContent = err.message; }
 });
 const openUpdates = () => { $("#updatesDlg").querySelectorAll(".err").forEach(x => { x.textContent = ""; }); $("#updatesDlg").showModal(); emailAsked(); };
 $("#updatesBtn").onclick = openUpdates;
 $("#updatesFoot").onclick = openUpdates;
-// Asked once per device, a little while into the first visit to a shelf: never on top of a pop-up or the filling-in card.
+// A small card in the lower right, once per device, a little while into the first visit (home page or shelf).
+// It waits while a pop-up is open, the filling-in card is showing, or someone is typing in the library box.
 let updAskTimer = null;
 function maybeAskUpdates() {
   if (updAskTimer) return;
   try { if (localStorage.getItem("nl-email-asked")) return; } catch { return; }
   updAskTimer = setTimeout(() => {
     updAskTimer = null;
-    const busy = document.querySelector("dialog[open]") || $("#copyToast") || $("#shelf").hidden;
+    const busy = document.querySelector("dialog[open]") || $("#copyToast") || (document.activeElement?.id === "pickInput" && $("#pickInput").value);
     if (busy) return maybeAskUpdates();
     try { if (localStorage.getItem("nl-email-asked")) return; } catch { return; }
     emailAsked();
     const card = Object.assign(document.createElement("div"), { id: "updToast", className: "copy-toast upd-toast" });
     card.setAttribute("role", "dialog"); card.setAttribute("aria-label", "Get updates");
-    card.innerHTML = `<div class="ct-body">Want an email when new libraries and features arrive?
+    card.innerHTML = `<img class="upd-ico" src="/icons/icon-192.png" alt="">
+      <div class="ct-body"><b>Want updates?</b><p class="lead">Get an email when new libraries and features arrive. We'll never spam you.</p>
       <form class="email-form" data-kind="updates" novalidate><div class="row"><input type="email" name="email" autocomplete="email" placeholder="Your email" required aria-label="Your email"><input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"><button type="submit">Sign up</button></div><p class="err" role="status" aria-live="polite"></p></form></div>
       <button class="ct-x" type="button" aria-label="Dismiss">\u00d7</button>`;
     card.querySelector(".ct-x").onclick = () => card.remove();
     document.body.append(card);
-  }, window.__nlAskMs || 25000);
+  }, window.__nlAskMs || 12000);
 }
 let websiteOnly = null;     // a library website with no catalog we could find: "Browse movies anyway" still works
 function openOther(d) {
@@ -1297,6 +1300,7 @@ function showHome(fromPop) {
   $("#pickInput").value = ""; $("#pickErr").textContent = "";
   window.scrollTo(0, 0);
   paintCopyToast();
+  maybeAskUpdates();
 }
 
 function boot(fromPop) {

@@ -613,13 +613,19 @@ scenario("email sign-ups: home box, nav Updates, the can't-read pop-up, and a on
   const W = world({ snap: { alpha: { body: snapBody(makeRows("alpha", 400)) } } });
   const { page, context } = await newPage(b, W, { askEmail: true });
   await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
-  await page.waitForSelector(".updates-box", { visible: true });
-  // home page box
-  await page.type("#homeEmail", "not-an-email"); await page.click(".updates-box button[type=submit]"); await sleep(200);
-  ok(/doesn't look right/.test(await page.$eval(".updates-box .err", e => e.textContent)), "a bad email gets a clear line, nothing sent");
-  await page.$eval("#homeEmail", e => { e.value = ""; }); await page.type("#homeEmail", "reader@example.com"); await page.click(".updates-box button[type=submit]"); await sleep(400);
-  ok(W.notifies?.length === 1 && W.notifies[0].email === "reader@example.com" && W.notifies[0].kind === "updates", `home box saves an updates sign-up (${JSON.stringify(W.notifies?.[0])})`);
-  ok(/on the list/.test(await page.$eval(".updates-box .err", e => e.textContent)), "and says thanks");
+  await page.waitForSelector("#pickInput", { visible: true });
+  ok(!(await page.$(".updates-box")), "no sign-up box crowding the home page");
+  // the little card arrives on its own after a while, lower right
+  await page.waitForSelector("#updToast", { timeout: 6000 });
+  const pos = await page.$eval("#updToast", e => { const r = e.getBoundingClientRect(); return { right: innerWidth - r.right, bottom: innerHeight - r.bottom, w: r.width }; });
+  ok(pos.right < 40 && pos.bottom < 40 && pos.w <= 340, `a small card in the lower right (${JSON.stringify(pos)})`);
+  await page.type("#updToast input[type=email]", "not-an-email"); await page.click("#updToast button[type=submit]"); await sleep(200);
+  ok(/doesn't look right/.test(await page.$eval("#updToast .err", e => e.textContent)), "a bad email gets a clear line, nothing sent");
+  await page.$eval("#updToast input[type=email]", e => { e.value = ""; }); await page.type("#updToast input[type=email]", "reader@example.com"); await page.click("#updToast button[type=submit]"); await sleep(400);
+  ok(W.notifies?.length === 1 && W.notifies[0].email === "reader@example.com" && W.notifies[0].kind === "updates", `the card saves an updates sign-up (${JSON.stringify(W.notifies?.[0])})`);
+  ok(/on the list/.test(await page.$eval("#updToast .err", e => e.textContent)), "and says thanks");
+  await sleep(2800);
+  ok(!(await page.$("#updToast")), "then tucks itself away");
   // nav Updates opens the same box
   await page.click("#updatesBtn"); await page.waitForSelector("#updatesDlg[open]");
   ok(true, "the Updates link in the nav opens a sign-up box");

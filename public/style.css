@@ -273,8 +273,6 @@ img { max-width: 100%; }
 #nopeBrowse { width: 100%; }
 
 /* email sign-ups */
-.updates-box { background: var(--card); border: 1px solid var(--rule); border-radius: var(--r); padding: 20px 24px; }
-@media (min-width: 900px) { .updates-box { grid-column: 2; margin-top: -40px; } }
 .email-form label { font: 500 12px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); }
 .email-form p { margin: 6px 0 10px; font-size: 14px; color: var(--ink-2); line-height: 1.5; }
 .email-form .row input[type=email] { min-width: 0; }
@@ -286,7 +284,14 @@ img { max-width: 100%; }
 .intro-email label { text-transform: none; letter-spacing: 0; font: 600 15px var(--sans); color: var(--ink); }
 .legal .link { font: inherit; color: inherit; font-weight: inherit; }
 @media (max-width: 640px) { #updatesBtn { display: none; } }
-.upd-toast form { margin-top: 8px; }
-.upd-toast .row input { background: var(--paper); color: var(--ink); border-color: var(--paper); }
-.upd-toast .row button { background: var(--paper); color: var(--ink); }
-.upd-toast .err { color: inherit; }
+.upd-toast { display: flex; gap: 12px; align-items: flex-start; width: 330px; padding: 14px 38px 14px 14px; animation: updIn .35s ease-out; }
+.upd-toast .upd-ico { width: 34px; height: 34px; border-radius: 6px; flex-shrink: 0; }
+.upd-toast b { font-size: 15px; }
+.upd-toast p.lead { margin: 2px 0 0; font-size: 13px; line-height: 1.45; opacity: .9; }
+.upd-toast form { margin-top: 10px; }
+.upd-toast .row { margin-top: 0; gap: 6px; }
+.upd-toast .row input { background: var(--paper); color: var(--ink); border-color: var(--paper); padding: 9px 10px; font-size: 16px; }
+.upd-toast .row button { background: var(--paper); color: var(--ink); padding: 9px 12px; }
+.upd-toast .err { color: inherit; font-size: 13px; }
+.upd-toast .err:empty { display: none; }
+@keyframes updIn { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }

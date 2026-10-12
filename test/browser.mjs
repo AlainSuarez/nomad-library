@@ -173,7 +173,10 @@ const status = page => page.$eval("#status", e => e.textContent).catch(() => "")
 async function waitCards(page, min = 1, timeout = 20000) {
   const t0 = Date.now();
   await page.waitForFunction(m => document.querySelectorAll("#grid .card").length >= m, { timeout, polling: 20 }, min);
-  return Date.now() - t0;
+  const t = Date.now() - t0;
+  await page.evaluate(() => { const d = document.querySelector("#guestIntro"); if (d?.open) d.close(); });   // the one-time explanation for libraries we can't read
+  if (await page.evaluate(() => history.state?.nl === "dialog")) await sleep(150);
+  return t;
 }
 const titles = page => page.$$eval("#grid .card", els => els.slice(0, 40).map(e => e.textContent));
 async function pickLibrary(page, slug) {
@@ -470,16 +473,24 @@ scenario("a library we cannot read yet: browse the nationwide shelf and check ti
   await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#pickInput", { visible: true });
   await page.type("#pickInput", "https://robeson.nccardinal.org/eg/opac/home"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
-  const t0 = Date.now(); await waitCards(page, 12);
+  const t0 = Date.now();
+  await page.waitForSelector("#guestIntro[open]", { timeout: 8000 });
+  const intro = await page.$eval("#guestIntro", e => e.textContent.replace(/\s+/g, " "));
+  ok(/Robeson County Public Library doesn't share its shelves with other sites/.test(intro) && /Check at Robeson County Public Library/.test(intro) && /Show me the movies/.test(intro), `a clear pop-up explains it: "${intro.slice(2, 90)}"`);
+  await waitCards(page, 12);
   note("guest mode: paste a catalog link -> first movies (ms)", Date.now() - t0);
   ok(/Robeson County Public Library/.test(await page.$eval("#libBtn", e => e.textContent)), "header names the library (from its catalog's page title)");
-  const st = await status(page); ok(/\d[\d,]* titles/.test(st), `a real nationwide shelf: "${st.trim().slice(0, 40)}"`);
+  const st = await status(page); ok(/\d[\d,]* popular movies/.test(st), `a real nationwide shelf: "${st.trim().slice(0, 40)}"`);
   ok((await page.$$("#grid .avail")).length === 0, "no on-the-shelf / all-out labels (we cannot know)");
   ok(!/DVD|Blu-ray/.test((await page.$$eval("#grid .meta", e => e.slice(0, 20).map(x => x.textContent))).join(" ")), "no format shown either");
   ok(await page.$eval("#fmt", e => getComputedStyle(e).display === "none"), "the Both / Blu-ray / DVD / Games switch is hidden");
   ok(await page.$eval("#sort", e => e.value === "pop" && e.options[0].textContent === "Most popular"), "opens on Most popular");
-  const card = await page.$eval("#copyToast", e => e.textContent).catch(() => "");
-  ok(/popular movies from libraries across the country/.test(card) && /Check at Robeson County Public Library/.test(card), `corner card explains it once: "${card.slice(0, 90)}"`);
+  ok(!(await page.$("#copyToast")), "no corner card on top of the movies");
+  ok(/popular movies · Tap one to check it at Robeson County Public Library/.test(await status(page)), `a reminder above the movies: "${(await status(page)).slice(0, 80)}"`);
+  await page.type("#q", "godfather"); await sleep(600);
+  const sl = await page.$eval("#status a", a => [a.textContent, a.href]).catch(() => null);
+  ok(sl && /Search Robeson County Public Library for “godfather”/.test(sl[0]) && sl[1].includes("robeson.nccardinal.org/eg/opac/results?query=godfather"), `a search offers the library's own catalog (${sl?.[0]})`);
+  await page.$eval("#q", e => { e.value = ""; e.dispatchEvent(new Event("input")); }); await sleep(500);
   await page.click("#filtBtn"); await sleep(200);
   ok(!(await page.$("#onShelfF")), "the filters have no 'On the shelf now' toggle");
   await page.evaluate(() => document.querySelector("#filters").close()); await sleep(500);
@@ -505,6 +516,11 @@ scenario("a library we cannot read yet: browse the nationwide shelf and check ti
     ok(href && href.startsWith(expectStart) && !/google/.test(href), `${pasted.slice(0, 40)}: searches the library's own catalog (${href?.slice(0, 80)})`);
   }
   ok(!(await page.evaluate(() => document.documentElement.innerHTML)).includes("google.com/search"), "no Google search link anywhere");
+  await page.evaluate(() => document.querySelector("#detail").close()).catch(() => {}); await sleep(500);
+  await page.evaluate(() => document.querySelector("#libBtn").click()); await page.waitForSelector("#pickInput", { visible: true });
+  await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", "https://robeson.nccardinal.org/eg/opac/home"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
+  await sleep(1500);
+  ok(!(await page.$("#guestIntro[open]")), "the pop-up shows once per library, not every visit");
   ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
 });
 

@@ -544,17 +544,7 @@ const liveNote = () => "";    // the message lives in the corner card now (paint
 let toastDismissed = "";
 function paintCopyToast() {
   const el = document.getElementById("copyToast");
-  if (isGuest()) {
-    const here = !$("#shelf").hidden && !$("#browse").hidden && toastDismissed !== GUEST;
-    if (!here) { if (el) el.remove(); return; }
-    const card = el || Object.assign(document.createElement("div"), { id: "copyToast", className: "copy-toast" });
-    card.setAttribute("role", "status"); card.setAttribute("aria-live", "polite");
-    card.innerHTML = `<div class="ct-body">${guestCatalog()
-      ? `These are popular movies from libraries across the country. Tap one, then <b>Check at ${esc(libLabel())}</b> to search for it in your library's catalog.`
-      : `These are popular movies from libraries across the country. <button class="link" id="addCatalogToast">Add your library's catalog link</button> to check any of them there in one tap.`}</div><button class="ct-x" data-ct-close aria-label="Dismiss">\u00d7</button>`;
-    if (!el) document.body.append(card);
-    return;
-  }
+  if (isGuest()) { if (el) el.remove(); return; }     // guests get the pop-up once and a line above the movies instead
   const lib = S.lib, ready = !!lib && LATE?.lib === lib;
   const here = !!lib && !$("#shelf").hidden && !$("#browse").hidden && SNAP?.lib === lib && !SNAP.ver;
   const show = here && (ready || (SNAP.building && !SNAP.loading && toastDismissed !== lib));
@@ -667,6 +657,13 @@ function snapRender() {
   $("#grid").innerHTML = "";
   const when = new Date(SNAP.finished).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const q = $("#q").value.trim();
+  if (isGuest()) {
+    // a reminder that stays put: these are popular movies, and Check opens the visitor's own catalog
+    const cat = guestCatalog(), n = snapList.length.toLocaleString();
+    $("#status").innerHTML = !cat ? `${n} popular movies · <button class="link" id="addCatalogToast">Add your catalog link</button> to check them at your library`
+      : q ? `${n} matches · <a href="${esc(searchLink(cat, q))}" target="_blank" rel="noopener">Search ${esc(libLabel())} for “${esc(q)}”</a>`
+      : `${n} popular movies · Tap one to check it at ${esc(libLabel())}`;
+  } else
   $("#status").innerHTML = `${snapList.length.toLocaleString()} ${S.fmt === "games" ? "games" : "titles"}` +
     (S.onShelf ? ` <span class="dim">· shelf status from ${when}, tap a title for right now</span>` : "") +
     (q ? ` · <button class="link" id="wholeCat">Search the whole catalog for “${esc(q)}”</button>` : "");
@@ -1018,7 +1015,11 @@ function libraryPicked() {
   if (!pickingForAccount || !me.uid) return;
   pickingForAccount = false;
   flushSave();
-  homeScreenOffer(() => { if ($("#account").open) $("#account").close(); toast(`Your library is ${libLabel()}. It's saved to your account.`); });
+  homeScreenOffer(() => {
+    if ($("#account").open) $("#account").close();
+    toast(`Your library is ${libLabel()}. It's saved to your account.`);
+    if (isGuest()) setTimeout(guestIntro, 150);    // after the account window's own history step
+  });
 }
 
 async function passkeyCreate() {
@@ -1159,7 +1160,22 @@ function enterGuest(info) {
   S.lib = GUEST; S.libName = S.guest.name; S.demo = false; S.shelf = "all"; S.sort = "pop"; clearFilter("all"); S.fmt = "all";
   toastDismissed = "";
   save(); boot();
+  if (!pickingForAccount) guestIntro();
   libraryPicked();
+}
+// Said once, plainly, the first time someone opens a library we can't read.
+function guestIntro() {
+  const cat = guestCatalog(), key = "nl-intro-" + (cat?.host || "none");
+  try { if (localStorage.getItem(key)) return; localStorage.setItem(key, "1"); } catch {}
+  const who = S.libName || "Your library", at = libLabel();
+  $("#guestIntroBody").innerHTML = `<div class="in acct-body"><button class="x" data-close aria-label="Close">×</button>
+    ${cat ? `<h2>${esc(who)} doesn't share its shelves with other sites</h2>
+      <p>So we can't show what's at ${esc(at)} right now. Here are popular movies from libraries across the country instead.</p>
+      <p>Tap any movie, then <b>Check at ${esc(at)}</b>, and your library's catalog opens with that movie already searched.</p>`
+    : `<h2>We couldn't find your library's catalog</h2>
+      <p>Here are popular movies from libraries across the country. Add your catalog link from the home page any time, and every movie gets a button that searches your library for it.</p>`}
+    <button class="btn" type="button" data-close style="width:100%;margin-top:6px">Show me the movies</button></div>`;
+  $("#guestIntro").showModal();
 }
 let websiteOnly = null;     // a library website with no catalog we could find: "Browse movies anyway" still works
 function openOther(d) {

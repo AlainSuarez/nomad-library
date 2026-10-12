@@ -99,17 +99,18 @@ function liveItem(slug, id) {
   return shape(slug, `L${slug}${n}`, { briefInfo: { title: `${slug.toUpperCase()} Live ${n}`, subtitle: "", format: n % 2 ? "BLURAY" : "DVD", publicationDate: "2011", subjectHeadings: [], genreForm: [] }, availability: { status: "AVAILABLE", availableCopies: 1, totalCopies: 2, heldCopies: 0 } });
 }
 
-async function newPage(browser, W, { ctx, seedState, idbBroken, viewport } = {}) {
+async function newPage(browser, W, { ctx, seedState, idbBroken, viewport, askEmail } = {}) {
   const context = ctx || (await browser.createBrowserContext());
   const page = await context.newPage();
   await page.setViewport(viewport || { width: 1280, height: 900 });
   await page.setRequestInterception(true);
   const cdp = await page.createCDPSession(); await cdp.send("Network.setBypassServiceWorker", { bypass: true });
-  await page.evaluateOnNewDocument((seed, broken) => {
+  await page.evaluateOnNewDocument((seed, broken, askEmail) => {
     if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {});
     if (seed && !localStorage.getItem("nl")) localStorage.setItem("nl", JSON.stringify(seed));
+    if (!askEmail) localStorage.setItem("nl-email-asked", "1"); else window.__nlAskMs = 1500;   // the one-time updates prompt stays out of other tests
     if (broken) Object.defineProperty(window, "indexedDB", { get() { throw new Error("storage blocked"); } });
-  }, seedState || null, !!idbBroken);
+  }, seedState || null, !!idbBroken, !!askEmail);
   page.errors = [];
   page.on("pageerror", e => page.errors.push(String(e)));
   page.on("request", async req => {
@@ -139,6 +140,7 @@ async function newPage(browser, W, { ctx, seedState, idbBroken, viewport } = {})
           return done(200, '{"ok":true}');
         }
         if (p === "/api/catalogs") return done(200, JSON.stringify(W.learned));
+        if (p === "/api/notify") { (W.notifies ||= []).push(JSON.parse(req.postData() || "{}")); return done(200, '{"ok":true}'); }
         if (p === "/api/auth/code-signup") { W.me = { uid: "new1", data: JSON.parse(req.postData() || "{}").data || {}, passkeys: 0 }; return done(200, JSON.stringify({ ok: true, code: "ABCD-EFGH-JKLM-NPQR" })); }
         if (p === "/api/want") { W.wants.push(JSON.parse(req.postData() || "{}").lib); return done(200, '{"ok":true}'); }
         if (p === "/api/visit") { (W.visits ||= []).push(JSON.parse(req.postData() || "{}")); return done(200, '{"ok":true}'); }
@@ -448,7 +450,7 @@ scenario("home page: one box for the catalog link, three steps, a pasted link op
   await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#pickInput", { visible: true }); await sleep(400);
   const home = await page.evaluate(() => ({
-    inputs: [...document.querySelectorAll("#pick input")].filter(e => e.offsetParent).length,
+    inputs: [...document.querySelectorAll("#pick .hero-card input")].filter(e => e.offsetParent).length,
     buttons: [...document.querySelectorAll("#pick button")].filter(e => e.offsetParent && /open/i.test(e.textContent)).length,
     label: document.querySelector("#pickForm label").textContent, steps: [...document.querySelectorAll(".how-steps li")].map(l => l.textContent),
     list: !!document.querySelector("#libList"), dir: performance.getEntriesByType("resource").some(r => r.name.includes("directory.json")) }));
@@ -604,6 +606,44 @@ scenario("sign-up: a new account sets up any library, saves it, and another devi
   await p2.click("#grid .card .cover"); await sleep(400);
   const href = await p2.$eval("#detailBody", e => [...e.querySelectorAll("a")].find(a => /^Check at/.test(a.textContent))?.href);
   ok(href?.includes("mclinc.polarislibrary.com/polaris/search/"), "and its Check button searches the same catalog");
+  ok(p2.errors.length === 0, `no page errors ${p2.errors.slice(0, 1)}`);
+});
+
+scenario("email sign-ups: home box, nav Updates, the can't-read pop-up, and a one-time prompt on the shelf", async b => {
+  const W = world({ snap: { alpha: { body: snapBody(makeRows("alpha", 400)) } } });
+  const { page, context } = await newPage(b, W, { askEmail: true });
+  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".updates-box", { visible: true });
+  // home page box
+  await page.type("#homeEmail", "not-an-email"); await page.click(".updates-box button[type=submit]"); await sleep(200);
+  ok(/doesn't look right/.test(await page.$eval(".updates-box .err", e => e.textContent)), "a bad email gets a clear line, nothing sent");
+  await page.$eval("#homeEmail", e => { e.value = ""; }); await page.type("#homeEmail", "reader@example.com"); await page.click(".updates-box button[type=submit]"); await sleep(400);
+  ok(W.notifies?.length === 1 && W.notifies[0].email === "reader@example.com" && W.notifies[0].kind === "updates", `home box saves an updates sign-up (${JSON.stringify(W.notifies?.[0])})`);
+  ok(/on the list/.test(await page.$eval(".updates-box .err", e => e.textContent)), "and says thanks");
+  // nav Updates opens the same box
+  await page.click("#updatesBtn"); await page.waitForSelector("#updatesDlg[open]");
+  ok(true, "the Updates link in the nav opens a sign-up box");
+  await page.evaluate(() => document.querySelector("#updatesDlg").close()); await sleep(300);
+  // a library we can't read: the pop-up has a notify box, with an optional updates tick
+  await page.type("#pickInput", "https://roxbury.aspendiscovery.org/"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
+  await page.waitForSelector("#guestIntro[open] .email-form");
+  await page.type("#guestIntro input[type=email]", "fan@example.com"); await page.click("#guestIntro input[name=updates]"); await page.click("#guestIntro .email-form button[type=submit]"); await sleep(500);
+  const lib = W.notifies.find(n => n.kind === "library"), upd = W.notifies.filter(n => n.email === "fan@example.com" && n.kind === "updates");
+  ok(lib && lib.email === "fan@example.com" && lib.lib.url.startsWith("https://roxbury.aspendiscovery.org") && lib.lib.name === "Roxbury" && upd.length === 1, "the pop-up saves 'tell me when Roxbury is ready' with its catalog link, plus updates when ticked");
+  ok(/email you when Roxbury's shelves are ready/.test(await page.$eval("#guestIntro .email-form .err", e => e.textContent)), "and says what happens next");
+  await page.close();
+  // a new device on a real library: the prompt shows once, a little while in
+  const W2 = world({ snap: { alpha: { body: snapBody(makeRows("alpha", 400)) } } });
+  const p2 = (await newPage(b, W2, { askEmail: true })).page;
+  await p2.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
+  await pickLibrary(p2, "alpha"); await waitCards(p2, 12);
+  await p2.waitForSelector("#updToast", { timeout: 6000 });
+  ok(true, "a one-time sign-up prompt appears on the shelf after a short while");
+  await p2.type("#updToast input[type=email]", "later@example.com"); await p2.click("#updToast button[type=submit]"); await sleep(400);
+  ok(W2.notifies?.[0]?.email === "later@example.com", "the prompt saves the email");
+  await p2.click("#updToast .ct-x"); await sleep(200);
+  await p2.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" }); await openSaved(p2); await waitCards(p2, 12); await sleep(3000);
+  ok(!(await p2.$("#updToast")), "and never shows again on that device");
   ok(p2.errors.length === 0, `no page errors ${p2.errors.slice(0, 1)}`);
 });
 

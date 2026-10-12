@@ -38,3 +38,6 @@ CREATE TABLE IF NOT EXISTS visits (day TEXT PRIMARY KEY, devices INTEGER NOT NUL
 CREATE TABLE IF NOT EXISTS requests (key TEXT PRIMARY KEY, name TEXT, city TEXT, st TEXT, host TEXT, vendor TEXT, n INTEGER NOT NULL DEFAULT 0, first INTEGER NOT NULL, last INTEGER NOT NULL);
 -- catalog links visitors gave for libraries in the directory, so the next person from that library skips the paste (key "Name|ST")
 CREATE TABLE IF NOT EXISTS catalogs (key TEXT PRIMARY KEY, url TEXT NOT NULL, system TEXT, n INTEGER NOT NULL DEFAULT 1, updated INTEGER NOT NULL);
+-- emails people chose to give: kind 'library' = tell me when my library's shelves are ready (with that library's catalog link),
+-- kind 'updates' = new libraries and features (maybe a newsletter later). token = their one-click unsubscribe.
+CREATE TABLE IF NOT EXISTS emails (id INTEGER PRIMARY KEY, email TEXT NOT NULL, kind TEXT NOT NULL, lib_host TEXT NOT NULL DEFAULT '', lib_name TEXT, lib_url TEXT, system TEXT, token TEXT NOT NULL, created INTEGER NOT NULL, UNIQUE (email, kind, lib_host));

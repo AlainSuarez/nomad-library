@@ -1174,8 +1174,64 @@ function guestIntro() {
       <p>Tap any movie, then <b>Check at ${esc(at)}</b>, and your library's catalog opens with that movie already searched.</p>`
     : `<h2>We couldn't find your library's catalog</h2>
       <p>Here are popular movies from libraries across the country. Add your catalog link from the home page any time, and every movie gets a button that searches your library for it.</p>`}
-    <button class="btn" type="button" data-close style="width:100%;margin-top:6px">Show me the movies</button></div>`;
+    <button class="btn" type="button" data-close style="width:100%;margin-top:6px">Show me the movies</button>
+    ${emailFormHTML("library", { label: `Get an email when we can show ${S.libName ? esc(S.libName) + "'s" : "your library's"} shelves`, button: "Notify me" })}</div>`;
   $("#guestIntro").showModal();
+  emailAsked();
+}
+
+// ---- email sign-ups: "my library is ready" and "updates" ---------------------------------
+// Optional, and stored only on our server (see the privacy page). Nothing is emailed from here.
+function emailFormHTML(kind, { label, button }) {
+  return `<form class="email-form intro-email" data-kind="${kind}" novalidate>
+    <label>${label}</label>
+    <div class="row"><input type="email" name="email" autocomplete="email" placeholder="Your email" required aria-label="Your email"><input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"><button type="submit">${button}</button></div>
+    ${kind === "library" ? `<label class="check"><input type="checkbox" name="updates"> Also send me Nomad Library updates</label>` : ""}
+    <p class="err" role="status" aria-live="polite"></p>
+  </form>`;
+}
+const emailAsked = () => { try { localStorage.setItem("nl-email-asked", "1"); } catch {} };
+document.addEventListener("submit", async e => {
+  const f = e.target.closest(".email-form");
+  if (!f) return;
+  e.preventDefault();
+  const msg = f.querySelector(".err"), email = f.email.value.trim(), kind = f.dataset.kind;
+  msg.classList.remove("ok");
+  if (!/^\S+@\S+\.\S+$/.test(email)) { msg.textContent = "That email doesn't look right. Check it and try again."; return; }
+  const lib = kind === "library" ? { name: S.libName || "", url: guestCatalog()?.url || "" } : null;
+  const send = k => api("/api/notify", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, kind: k, lib, website: f.website.value }) });
+  msg.textContent = "Saving…";
+  try {
+    await send(kind);
+    if (kind === "library" && f.updates?.checked) await send("updates");
+    emailAsked();
+    msg.classList.add("ok");
+    msg.textContent = kind === "library" ? `Thanks. We'll email you when ${S.libName ? S.libName + "'s" : "your library's"} shelves are ready.` : "Thanks. You're on the list.";
+    f.querySelector(".row").hidden = true; f.querySelector(".check")?.remove();
+  } catch (err) { msg.textContent = err.message; }
+});
+const openUpdates = () => { $("#updatesDlg").querySelectorAll(".err").forEach(x => { x.textContent = ""; }); $("#updatesDlg").showModal(); emailAsked(); };
+$("#updatesBtn").onclick = openUpdates;
+$("#updatesFoot").onclick = openUpdates;
+// Asked once per device, a little while into the first visit to a shelf: never on top of a pop-up or the filling-in card.
+let updAskTimer = null;
+function maybeAskUpdates() {
+  if (updAskTimer) return;
+  try { if (localStorage.getItem("nl-email-asked")) return; } catch { return; }
+  updAskTimer = setTimeout(() => {
+    updAskTimer = null;
+    const busy = document.querySelector("dialog[open]") || $("#copyToast") || $("#shelf").hidden;
+    if (busy) return maybeAskUpdates();
+    try { if (localStorage.getItem("nl-email-asked")) return; } catch { return; }
+    emailAsked();
+    const card = Object.assign(document.createElement("div"), { id: "updToast", className: "copy-toast upd-toast" });
+    card.setAttribute("role", "dialog"); card.setAttribute("aria-label", "Get updates");
+    card.innerHTML = `<div class="ct-body">Want an email when new libraries and features arrive?
+      <form class="email-form" data-kind="updates" novalidate><div class="row"><input type="email" name="email" autocomplete="email" placeholder="Your email" required aria-label="Your email"><input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"><button type="submit">Sign up</button></div><p class="err" role="status" aria-live="polite"></p></form></div>
+      <button class="ct-x" type="button" aria-label="Dismiss">\u00d7</button>`;
+    card.querySelector(".ct-x").onclick = () => card.remove();
+    document.body.append(card);
+  }, window.__nlAskMs || 25000);
 }
 let websiteOnly = null;     // a library website with no catalog we could find: "Browse movies anyway" still works
 function openOther(d) {
@@ -1250,6 +1306,7 @@ function boot(fromPop) {
   $("#pick").hidden = true; $("#shelf").hidden = false;
   $("#libBtn").hidden = false; $("#libBtn").textContent = S.libName || (isGuest() ? "Your library" : S.lib);
   paintControls(); setTab("browse"); reload();
+  maybeAskUpdates();
 }
 
 $("#fmt").onclick = e => { const b = e.target.closest("button"); if (!b) return; S.fmt = b.dataset.fmt; save(); paintControls(); reload(); };

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { onRequestGet as library } from "../functions/api/library.js";
 import { onRequestPost as request } from "../functions/api/request.js";
+import { onRequestPost as notify } from "../functions/api/notify.js";
+import { onRequestGet as unsubscribe } from "../functions/api/unsubscribe.js";
 
 const stored = new Map();
 globalThis.caches = { default: { async match(k) { return stored.get(k.url)?.clone(); }, async put(k, r) { stored.set(k.url, r.clone()); } } };
@@ -82,5 +84,25 @@ await test("counting a request: validated, clipped, one statement", async () => 
   assert.equal((await post({ name: "Denville Free Public Library", city: "Denville", st: "nj", vendor: "Aspen Discovery" })).status, 200);
   assert.match(sql, /ON CONFLICT\(key\) DO UPDATE SET n = n \+ 1/); assert.equal(args[3], "NJ");
   await post({ name: "x".repeat(900) }); assert.ok(args[1].length <= 120);
+});
+await test("email sign-ups: checked, robots ignored, a duplicate is one row, the library's catalog is kept", async () => {
+  const rows = new Map();
+  const e = { DB: { prepare: sql => ({
+    first: async () => ({ n: rows.size }),
+    bind: (...a) => ({
+      run: async () => { if (/^INSERT INTO emails/.test(sql)) { const k = a.slice(0, 3).join("|"); if (!rows.has(k)) rows.set(k, a); } if (/^DELETE FROM emails/.test(sql)) for (const [k, r] of rows) if (r[0] === a[0]) rows.delete(k); return {}; },
+      first: async () => [...rows.values()].find(r => r[6] === a[0]) ? { email: [...rows.values()].find(r => r[6] === a[0])[0] } : null }) }) } };
+  const post = body => notify({ request: new Request("https://x/api/notify", { method: "POST", body: JSON.stringify(body) }), env: e });
+  assert.equal((await post({ email: "nope" })).status, 400);
+  assert.equal((await post({ email: "bot@example.com", website: "http://spam" })).status, 200); assert.equal(rows.size, 0, "the hidden robot field saves nothing");
+  assert.equal((await post({ email: " Fan@Example.com ", kind: "library", lib: { name: "Roxbury", url: "https://roxbury.aspendiscovery.org/?browseCategory=x" } })).status, 200);
+  await post({ email: "fan@example.com", kind: "library", lib: { name: "Roxbury", url: "https://roxbury.aspendiscovery.org/" } });
+  await post({ email: "fan@example.com", kind: "updates" });
+  assert.equal(rows.size, 2, "the same library twice is one row; updates is its own row");
+  const lib = [...rows.values()].find(r => r[1] === "library");
+  assert.deepEqual(lib.slice(0, 6), ["fan@example.com", "library", "roxbury.aspendiscovery.org", "Roxbury", "https://roxbury.aspendiscovery.org/?browseCategory=x", "aspen"]);
+  assert.match(lib[6], /^[A-Za-z0-9_-]{24}$/, "each row has an unsubscribe token");
+  const r = await unsubscribe({ request: new Request("https://x/api/unsubscribe?t=" + lib[6]), env: e });
+  assert.match(await r.text(), /unsubscribed/); assert.equal(rows.size, 0, "unsubscribe deletes every row for that address");
 });
 globalThis.fetch = original;

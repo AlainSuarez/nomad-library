@@ -39,8 +39,6 @@ a { color: inherit; }
 .nav { margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .navlink { text-decoration: none; font-weight: 500; font-size: 14px; padding: 7px 10px; border-radius: var(--r); }
 .navlink:hover { background: var(--card); }
-button.navlink { background: none; border: 0; color: inherit; font-family: inherit; cursor: pointer; }
-button.navlink:hover { background: var(--card); }
 .brand img { border-radius: var(--r); }
 .libname { background: none; border: 1px solid var(--rule); border-radius: var(--r); padding: 7px 12px;
   font: 500 13px/1.2 var(--sans); max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -283,7 +281,6 @@ img { max-width: 100%; }
 .intro-email { border-top: 1px solid var(--rule); margin-top: 16px; padding-top: 14px; }
 .intro-email label { text-transform: none; letter-spacing: 0; font: 600 15px var(--sans); color: var(--ink); }
 .legal .link { font: inherit; color: inherit; font-weight: inherit; }
-@media (max-width: 640px) { #updatesBtn { display: none; } }
 .upd-toast { display: flex; gap: 12px; align-items: flex-start; width: 330px; padding: 14px 38px 14px 14px; animation: updIn .35s ease-out; }
 .upd-toast .upd-ico { width: 34px; height: 34px; border-radius: 6px; flex-shrink: 0; }
 .upd-toast b { font-size: 15px; }

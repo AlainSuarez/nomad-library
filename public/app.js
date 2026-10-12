@@ -1211,11 +1211,23 @@ document.addEventListener("submit", async e => {
     const card = f.closest("#updToast"); if (card) setTimeout(() => card.remove(), 2500);
   } catch (err) { msg.textContent = err.message; }
 });
-const openUpdates = () => { $("#updatesDlg").querySelectorAll(".err").forEach(x => { x.textContent = ""; }); $("#updatesDlg").showModal(); emailAsked(); };
-$("#updatesBtn").onclick = openUpdates;
-$("#updatesFoot").onclick = openUpdates;
-// A small card in the lower right, once per device, a little while into the first visit (home page or shelf).
-// It waits while a pop-up is open, the filling-in card is showing, or someone is typing in the library box.
+// The updates sign-up is one small card in the lower right. It shows by itself once per device, a little while
+// into the first visit (home page or shelf), and the footer's "Get updates" link brings it back.
+function showUpdatesCard() {
+  emailAsked();
+  if ($("#updToast")) return $("#updToast");
+  const card = Object.assign(document.createElement("div"), { id: "updToast", className: "copy-toast upd-toast" });
+  card.setAttribute("role", "dialog"); card.setAttribute("aria-label", "Get updates");
+  card.innerHTML = `<img class="upd-ico" src="/icons/icon-192.png" alt="">
+    <div class="ct-body"><b>Want updates?</b><p class="lead">Get an email when new libraries and features arrive. We'll never spam you.</p>
+    <form class="email-form" data-kind="updates" novalidate><div class="row"><input type="email" name="email" autocomplete="email" placeholder="Your email" required aria-label="Your email"><input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"><button type="submit">Sign up</button></div><p class="err" role="status" aria-live="polite"></p></form></div>
+    <button class="ct-x" type="button" aria-label="Dismiss">\u00d7</button>`;
+  card.querySelector(".ct-x").onclick = () => card.remove();
+  document.body.append(card);
+  return card;
+}
+$("#updatesFoot").onclick = () => showUpdatesCard().querySelector("input[type=email]")?.focus();
+// The first-visit card waits while a pop-up is open, the filling-in card is showing, or someone is typing in the library box.
 let updAskTimer = null;
 function maybeAskUpdates() {
   if (updAskTimer) return;
@@ -1225,15 +1237,7 @@ function maybeAskUpdates() {
     const busy = document.querySelector("dialog[open]") || $("#copyToast") || (document.activeElement?.id === "pickInput" && $("#pickInput").value);
     if (busy) return maybeAskUpdates();
     try { if (localStorage.getItem("nl-email-asked")) return; } catch { return; }
-    emailAsked();
-    const card = Object.assign(document.createElement("div"), { id: "updToast", className: "copy-toast upd-toast" });
-    card.setAttribute("role", "dialog"); card.setAttribute("aria-label", "Get updates");
-    card.innerHTML = `<img class="upd-ico" src="/icons/icon-192.png" alt="">
-      <div class="ct-body"><b>Want updates?</b><p class="lead">Get an email when new libraries and features arrive. We'll never spam you.</p>
-      <form class="email-form" data-kind="updates" novalidate><div class="row"><input type="email" name="email" autocomplete="email" placeholder="Your email" required aria-label="Your email"><input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"><button type="submit">Sign up</button></div><p class="err" role="status" aria-live="polite"></p></form></div>
-      <button class="ct-x" type="button" aria-label="Dismiss">\u00d7</button>`;
-    card.querySelector(".ct-x").onclick = () => card.remove();
-    document.body.append(card);
+    showUpdatesCard();
   }, window.__nlAskMs || 12000);
 }
 let websiteOnly = null;     // a library website with no catalog we could find: "Browse movies anyway" still works

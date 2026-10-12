@@ -33,7 +33,6 @@
   </a>
   <nav class="nav">
     <button class="libname" id="libBtn" hidden></button>
-    <button class="navlink" id="updatesBtn" type="button">Updates</button>
     <a class="navlink" href="https://www.youtube.com/@NomadOverNormal" target="_blank" rel="noopener">YouTube</a>
     <a class="navlink" id="donateNav" href="https://venmo.com/u/chrisgpresents" target="_blank" rel="noopener">Donate</a>
     <button class="acct" id="acctBtn">Sign in</button>
@@ -138,16 +137,6 @@
 
 <!-- first visit to a library we can't read -->
 <dialog id="guestIntro" class="sheet small" aria-label="About this shelf"><div id="guestIntroBody"></div></dialog>
-
-<!-- email updates -->
-<dialog id="updatesDlg" class="sheet small" aria-label="Get updates"><div class="in acct-body"><button class="x" data-close aria-label="Close">×</button>
-  <h2>Get updates</h2>
-  <form class="email-form" data-kind="updates" novalidate>
-    <p>An email when new libraries and features arrive. No spam, and you can unsubscribe any time.</p>
-    <div class="row"><input type="email" name="email" autocomplete="email" placeholder="Your email" required aria-label="Your email"><input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"><button type="submit">Sign up</button></div>
-    <p class="err" role="status" aria-live="polite"></p>
-  </form>
-</div></dialog>
 
 <!-- account -->
 <dialog id="account" class="sheet small"><div id="acctBody"></div></dialog>

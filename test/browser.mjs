@@ -609,7 +609,7 @@ scenario("sign-up: a new account sets up any library, saves it, and another devi
   ok(p2.errors.length === 0, `no page errors ${p2.errors.slice(0, 1)}`);
 });
 
-scenario("email sign-ups: home box, nav Updates, the can't-read pop-up, and a one-time prompt on the shelf", async b => {
+scenario("email sign-ups: the lower-right card, the footer link, the can't-read pop-up, and a one-time prompt on the shelf", async b => {
   const W = world({ snap: { alpha: { body: snapBody(makeRows("alpha", 400)) } } });
   const { page, context } = await newPage(b, W, { askEmail: true });
   await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
@@ -626,10 +626,13 @@ scenario("email sign-ups: home box, nav Updates, the can't-read pop-up, and a on
   ok(/on the list/.test(await page.$eval("#updToast .err", e => e.textContent)), "and says thanks");
   await sleep(2800);
   ok(!(await page.$("#updToast")), "then tucks itself away");
-  // nav Updates opens the same box
-  await page.click("#updatesBtn"); await page.waitForSelector("#updatesDlg[open]");
-  ok(true, "the Updates link in the nav opens a sign-up box");
-  await page.evaluate(() => document.querySelector("#updatesDlg").close()); await sleep(300);
+  // no Updates button in the nav; the footer link brings the same little card back
+  ok(!(await page.$("#updatesBtn, #updatesDlg")), "no Updates button or sign-up dialog, only the card");
+  await page.evaluate(() => document.querySelector("#updatesFoot").click());
+  await page.waitForSelector("#updToast", { timeout: 2000 });
+  const pos2 = await page.$eval("#updToast", e => { const r = e.getBoundingClientRect(); return { right: innerWidth - r.right, bottom: innerHeight - r.bottom, focused: document.activeElement === e.querySelector("input[type=email]") }; });
+  ok(pos2.right < 40 && pos2.bottom < 40 && pos2.focused, `the footer's Get updates link pops the same card, ready to type (${JSON.stringify(pos2)})`);
+  await page.click("#updToast .ct-x"); await sleep(200);
   // a library we can't read: the pop-up has a notify box, with an optional updates tick
   await page.type("#pickInput", "https://roxbury.aspendiscovery.org/"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
   await page.waitForSelector("#guestIntro[open] .email-form");

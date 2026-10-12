@@ -39,6 +39,8 @@ a { color: inherit; }
 .nav { margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .navlink { text-decoration: none; font-weight: 500; font-size: 14px; padding: 7px 10px; border-radius: var(--r); }
 .navlink:hover { background: var(--card); }
+button.navlink { background: none; border: 0; color: inherit; font-family: inherit; cursor: pointer; }
+button.navlink:hover { background: var(--card); }
 .brand img { border-radius: var(--r); }
 .libname { background: none; border: 1px solid var(--rule); border-radius: var(--r); padding: 7px 12px;
   font: 500 13px/1.2 var(--sans); max-width: 30vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

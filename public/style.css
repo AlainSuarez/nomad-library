@@ -295,3 +295,4 @@ img { max-width: 100%; }
 .upd-toast .err { color: inherit; font-size: 13px; }
 .upd-toast .err:empty { display: none; }
 @keyframes updIn { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-width: 640px) { .upd-toast { width: auto; } }

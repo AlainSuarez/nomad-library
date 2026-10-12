@@ -24,7 +24,7 @@ const decode = t => t.replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n)).re
 // "Home | Pottstown Regional Public Library" -> "Pottstown Regional Public Library"
 const nameInPage = html => {
   const t = decode((html.match(/<title[^>]*>([^<]{3,200})<\/title>/i) || [])[1] || "");
-  const part = t.split(/\s[|–—-]\s|\s::\s/).map(x => x.trim().replace(/^(welcome to|visit us at|home of)\s+(the\s+)?/i, "")).find(x => /librar/i.test(x) && x.length <= 80);
+  const part = t.split(/\s[|–—-]\s|\s::\s/).map(x => x.trim().replace(/^(welcome to|visit us at|home of)\s+(the\s+)?/i, "")).find(x => /librar/i.test(x) && x.length <= 80 && /\S+\s+\S+/.test(x) && !/^(the\s+)?(public\s+)?(library|libraries)(\s+(home|homepage|website|catalog))?$|^(home|welcome|catalog|search)\b/i.test(x));
   return part || "";
 };
 // Every address on the page that is plainly a library catalog, in page order. One cheap scan, so a big homepage stays fast.

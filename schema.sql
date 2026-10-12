@@ -36,3 +36,5 @@ ALTER TABLE libs ADD COLUMN wanted_at INTEGER NOT NULL DEFAULT 0;   -- when a vi
 CREATE TABLE IF NOT EXISTS visits (day TEXT PRIMARY KEY, devices INTEGER NOT NULL DEFAULT 0, new_devices INTEGER NOT NULL DEFAULT 0);
 -- libraries people asked for that we cannot show yet: a count per library and per catalog system (no IDs)
 CREATE TABLE IF NOT EXISTS requests (key TEXT PRIMARY KEY, name TEXT, city TEXT, st TEXT, host TEXT, vendor TEXT, n INTEGER NOT NULL DEFAULT 0, first INTEGER NOT NULL, last INTEGER NOT NULL);
+-- catalog links visitors gave for libraries in the directory, so the next person from that library skips the paste (key "Name|ST")
+CREATE TABLE IF NOT EXISTS catalogs (key TEXT PRIMARY KEY, url TEXT NOT NULL, system TEXT, n INTEGER NOT NULL DEFAULT 1, updated INTEGER NOT NULL);

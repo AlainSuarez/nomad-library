@@ -1,7 +1,8 @@
 {
-  "Robeson County Public Library|NC": { "host": "robeson.nccardinal.org", "vendor": "Evergreen" },
-  "Roxbury Public Library|NJ": { "host": "roxbury.aspendiscovery.org", "vendor": "Aspen Discovery" },
-  "Denville Free Public Library|NJ": { "host": "denville.aspendiscovery.org", "vendor": "Aspen Discovery" },
-  "Free Library of Philadelphia|PA": { "host": "catalog.freelibrary.org", "vendor": "" },
-  "Malden Public Library|MA": { "host": "find.minlib.net", "vendor": "Sierra Encore" }
+  "Robeson County Public Library|NC": "https://robeson.nccardinal.org/eg/opac/home",
+  "Roxbury Public Library|NJ": "https://roxbury.aspendiscovery.org/",
+  "Denville Free Public Library|NJ": "https://denville.aspendiscovery.org/",
+  "Free Library of Philadelphia|PA": "https://catalog.freelibrary.org/",
+  "Pottsville Free Public Library|PA": "https://pottsville.chilipac.com/r1s/eg/opac/home",
+  "Pottstown Regional Public Library|PA": "https://mclinc.polarislibrary.com/polaris/"
 }

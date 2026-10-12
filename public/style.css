@@ -136,6 +136,10 @@ select { padding: 8px 10px; border: 1.5px solid var(--rule); border-radius: var(
 .wl-import p { margin: 0 0 12px; color: var(--ink-2); }
 .drop { display: block; border: 1.5px dashed var(--ink); border-radius: var(--r); padding: 18px; text-align: center; font-weight: 600; cursor: pointer; }
 .missing { margin: 26px 0; color: var(--ink-2); font-size: 14px; }
+.wl-list { list-style: none; padding: 0; margin: 0; columns: 2 260px; column-gap: 24px; }
+.wl-list li { break-inside: avoid; padding: 6px 0; border-bottom: 1px solid var(--rule); }
+.wl-list a { color: var(--ink); text-decoration: none; }
+.wl-list a:hover { text-decoration: underline; }
 .missing h3 { font: 600 17px var(--sans); color: var(--ink); margin: 0 0 6px; }
 
 .foot { border-top: 1px solid var(--rule); padding: 20px 16px calc(20px + env(safe-area-inset-bottom)); text-align: center; color: var(--ink-2); font-size: 13px; }

@@ -1,7 +1,7 @@
 // Nomad Library: any BiblioCommons library's movies on one browsable shelf.
 // The server only relays the library's catalog. Ratings, sorting and your lists
 // all happen here in the browser, which keeps the site free to run.
-
+import { readCatalogLink, searchLink } from "/catalog.js";
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -34,7 +34,7 @@ function flushSave() {
 }
 addEventListener("pagehide", flushSave);
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushSave(); });
-const synced = () => ({ ...(S.demo ? {} : { lib: S.lib, libName: S.libName }), fmt: S.fmt, faves: S.faves, watch: S.watch });
+const synced = () => ({ ...(S.demo ? {} : { lib: S.lib, libName: S.libName, ...(S.lib === "shelf" ? { guest: S.guest } : {}) }), fmt: S.fmt, faves: S.faves, watch: S.watch });
 
 function toast(msg) {
   const t = document.createElement("div");
@@ -134,19 +134,16 @@ const badgeHTML = r => (r.r && r.v >= 50 ? `<span class="badge"><b>★</b> ${r.r
 // Guest mode: the visitor's library is one we cannot read yet, so they browse the nationwide shelf and check titles at their library.
 const GUEST = "shelf";
 const isGuest = () => S.lib === GUEST;
-function checkUrl(r) {
-  const g = S.guest || {}, q = encodeURIComponent(r.title), host = g.host || "";
-  if (host) {
-    const direct = {
-      "Aspen Discovery": `https://${host}/Search/Results?lookfor=${q}&searchIndex=Keyword&searchSource=local`,
-      "Evergreen": `https://${host}/eg/opac/results?query=${q}&qtype=keyword`,
-      "Koha": `https://${host}/cgi-bin/koha/opac-search.pl?q=${q}`,
-      "Sierra Encore": `https://${host}/iii/encore/search/C__S${q}__Orightresult__U?lang=eng&suite=cobalt`,
-    }[g.vendor];
-    return direct || `https://${host}/`;       // a library's own catalog beats a web search, even if we cannot pre-fill the title
-  }
-  return "https://www.google.com/search?q=" + encodeURIComponent(`${r.title} ${g.name || S.libName} ${g.city || ""} ${g.st || ""} library catalog`.replace(/\s+/g, " "));
+// The visitor's catalog: { url, host, system, find }. Older saves kept only a host and a system name.
+const OLD_SYSTEMS = { "Aspen Discovery": "aspen", "Evergreen": "evergreen", "Koha": "koha", "Sierra Encore": "encore" };
+function guestCatalog() {
+  const g = S.guest || {};
+  if (g.catalog?.url) return g.catalog;
+  return g.host ? readCatalogLink("https://" + g.host, OLD_SYSTEMS[g.vendor] || "") : null;
 }
+const libLabel = () => S.libName || "your library";
+// Searches the visitor's own catalog for the title. Their browser opens it, so catalogs that block other websites still work.
+const checkUrl = r => searchLink(guestCatalog(), r.title);
 function cardHTML(r) {
   const rating = badgeHTML(r);
   const cover = r.img
@@ -205,10 +202,11 @@ function openDetail(r) {
         ${r.sub ? `<p class="sub">${esc(r.sub)}</p>` : ""}
         <div class="facts">${r.f === "g" ? esc(r.plat || "") || yearNote : yearNote} · ${esc(fmtLabel)}${r.r ? ` · <b>★ ${r.r.toFixed(1)}</b> from ${Number(r.v).toLocaleString()} votes` : ""}${isGuest() ? "" : `<br><span id="liveAv">${av}</span>`}</div>
         <p id="detailSynopsis">${r.desc ? esc(r.desc) : isGuest() ? (r.imdb ? `<a href="https://www.imdb.com/title/${esc(r.imdb)}/" target="_blank" rel="noopener">Read the synopsis on IMDb</a>` : "") : `<a href="${esc(r.url)}" target="_blank" rel="noopener">Read the synopsis at your library</a>`}</p>
-        ${r.eds && r.eds.length > 1 ? `<div class="facts">${r.eds.map(e => `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.fmt)}${e.disc ? ` (${e.disc})` : ""}</a>: ${e.avail ? `<b style="color:var(--ok)">${e.copies} in</b>` : `all out${e.holds ? `, ${e.holds} holds` : ""}`}`).join("<br>")}</div>` : ""}
+        ${r.eds && r.eds.length > 1 && !isGuest() ? `<div class="facts">${r.eds.map(e => `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.fmt)}${e.disc ? ` (${e.disc})` : ""}</a>: ${e.avail ? `<b style="color:var(--ok)">${e.copies} in</b>` : `all out${e.holds ? `, ${e.holds} holds` : ""}`}`).join("<br>")}</div>` : ""}
         <div class="actions">
           ${isGuest()
-            ? `<a class="btn" href="${esc(checkUrl(r))}" target="_blank" rel="noopener">Check at ${esc(S.libName)}</a>`
+            ? (checkUrl(r) ? `<a class="btn" href="${esc(checkUrl(r))}" target="_blank" rel="noopener">Check at ${esc(libLabel())}</a>`
+              : `<button class="btn" type="button" id="addCatalog">Check at your library</button>`)
             : `<a class="btn" href="${esc((r.eds?.find(e => e.avail) || r).url)}" target="_blank" rel="noopener">${r.avail ? "Place a hold" : "Get in line"}</a>`}
           <a class="btn ghost" href="/t?q=${encodeURIComponent(r.title + " " + (r.fy || ""))}" target="_blank" rel="noopener">Trailer</a>
           ${imdb}
@@ -274,7 +272,7 @@ function counts() {
   const f = Object.values(S.faves).filter(x => x.lib === S.lib).length;
   $("#favCount").textContent = f ? f : "";
   const w = S.watch?.matches?.[S.lib];
-  $("#wlCount").textContent = w ? w.filter(x => x.hits.length).length : "";
+  $("#wlCount").textContent = isGuest() ? (S.watch?.items?.length || "") : w ? w.filter(x => x.hits.length).length : "";
 }
 
 // ---- browsing -----------------------------------------------------------------
@@ -551,7 +549,9 @@ function paintCopyToast() {
     if (!here) { if (el) el.remove(); return; }
     const card = el || Object.assign(document.createElement("div"), { id: "copyToast", className: "copy-toast" });
     card.setAttribute("role", "status"); card.setAttribute("aria-live", "polite");
-    card.innerHTML = `<div class="ct-body">Browsing movies for ${esc(S.libName)}. Tap <b>Check at ${esc(S.libName)}</b> on any movie to see if they have it.</div><button class="ct-x" data-ct-close aria-label="Dismiss">\u00d7</button>`;
+    card.innerHTML = `<div class="ct-body">${guestCatalog()
+      ? `These are popular movies from libraries across the country. Tap one, then <b>Check at ${esc(libLabel())}</b> to search for it in your library's catalog.`
+      : `These are popular movies from libraries across the country. <button class="link" id="addCatalogToast">Add your library's catalog link</button> to check any of them there in one tap.`}</div><button class="ct-x" data-ct-close aria-label="Dismiss">\u00d7</button>`;
     if (!el) document.body.append(card);
     return;
   }
@@ -784,7 +784,17 @@ $("#filtBody").addEventListener("input", e => {
 $("#filters").addEventListener("close", () => { liveQ = false; reload(); });
 $("#filtBtn").onclick = openFilters;
 $("#active").addEventListener("click", e => { const b = e.target.closest("[data-clear]"); if (b) { clearFilter(b.dataset.clear); save(); reload(); } });
-document.addEventListener("click", e => { if (e.target.id === "wholeCat") { liveQ = true; reload(); } else if (e.target.id === "retryMore") { $("#more").textContent = "Loading more…"; liveMore(); } else if (e.target.id === "openReadyCopy") { reload(); } else if (e.target.closest?.("[data-ct-close]")) { toastDismissed = S.lib; paintCopyToast(); } else if (e.target.id === "nopeBrowse") { enterGuest(nopeInfo); } });
+document.addEventListener("click", e => { if (e.target.id === "wholeCat") { liveQ = true; reload(); } else if (e.target.id === "retryMore") { $("#more").textContent = "Loading more…"; liveMore(); } else if (e.target.id === "openReadyCopy") { reload(); } else if (e.target.closest?.("[data-ct-close]")) { toastDismissed = S.lib; paintCopyToast(); } else if (e.target.id === "addCatalog" || e.target.id === "addCatalogToast") askCatalog(); });
+// From the shelf: back to the home page with the catalog box open for this library.
+function askCatalog() {
+  const open = $("#detail").open;
+  if (open) $("#detail").close();
+  setTimeout(() => {                        // after the dialog's own history step settles
+    showHome();
+    showUnconnected({ name: S.guest?.name || "", city: S.guest?.city || "", st: S.guest?.st || "" });
+    $("#nopeUrl").focus();
+  }, open ? 120 : 0);
+}
 
 // ---- favorites and watchlist tabs ------------------------------------------------
 
@@ -830,7 +840,7 @@ function readWatchlist(text) {
 
 async function matchWatchlist() {
   const W = S.watch;
-  if (!W?.items?.length) return showWatch();
+  if (!W?.items?.length || isGuest()) return showWatch();
   W.matches = W.matches || {};
   const out = [];
   $("#wlStatus").textContent = `Checking ${W.items.length} titles at ${S.libName}…`;
@@ -845,7 +855,24 @@ async function matchWatchlist() {
   save(); counts(); showWatch();
 }
 
+// A library we cannot read: the watchlist becomes one-tap searches of the library's own catalog,
+// with a cover for the titles that are on the movie shelf here.
+async function showGuestWatch() {
+  const items = S.watch?.items || [], cat = guestCatalog();
+  $("#wlGrid").innerHTML = ""; $("#wlMissing").innerHTML = ""; $("#wlStatus").textContent = "";
+  if (!items.length) return;
+  if (!cat) { $("#wlStatus").innerHTML = `Your ${esc(S.watch.source)} watchlist has ${items.length} titles. <button class="link" id="addCatalogToast">Add your library's catalog link</button> to check them there, one tap each.`; return; }
+  await loadSnap().catch(() => {});
+  const cards = [], rest = [];
+  for (const it of items) { const r = it.imdb && rowsById.get(it.imdb); if (r) cards.push(r); else rest.push(it); }
+  $("#wlStatus").textContent = `Your ${S.watch.source} watchlist, ${items.length} titles. Tap any of them to search for it at ${libLabel()}.`;
+  $("#wlGrid").innerHTML = cards.map(cardHTML).join("");
+  $("#wlMissing").innerHTML = rest.length
+    ? `<ul class="wl-list">${rest.map(x => `<li><a href="${esc(searchLink(cat, x.t))}" target="_blank" rel="noopener">${esc(x.t)}${x.y ? ` (${x.y})` : ""}</a></li>`).join("")}</ul>` : "";
+}
+
 async function showWatch() {
+  if (isGuest()) return showGuestWatch();
   const m = S.watch?.matches?.[S.lib];
   if (!m) { $("#wlGrid").innerHTML = ""; $("#wlMissing").innerHTML = ""; $("#wlStatus").textContent = S.watch ? "" : ""; if (S.watch?.items?.length) matchWatchlist(); return; }
   const have = [], miss = [];
@@ -931,7 +958,7 @@ function mergeIn(data, signingIn = false) {
   if (!data) return;
   S.faves = signingIn ? { ...(data.faves || {}), ...S.faves } : { ...(data.faves || {}) };
   // Your account's library wins over whatever this device was last browsing.
-  if (data.lib) { S.lib = data.lib; S.libName = data.libName; S.demo = false; }
+  if (data.lib) { S.lib = data.lib; S.libName = data.libName; S.demo = false; if (data.lib === GUEST) S.guest = data.guest || S.guest || {}; }
   if (data.watch || !signingIn) S.watch = data.watch || S.watch;
   if (data.fmt && !store.get().fmt) S.fmt = data.fmt;
 }
@@ -962,44 +989,35 @@ async function afterSignIn(extra) {
   });
 }
 
-// Right after signup (or a sign-in with no library yet): pick your own library.
+// Right after signup (or a sign-in with no library yet): pick your own library, with the same search as the home page.
+let pickingForAccount = false;
 function libraryStep() {
-  if (!LIBS) return loadLibs().then(libraryStep, libraryStep);
   const mine = S.lib && !S.demo;
   acctView(`<h2>Now, let's set up your library</h2>
-    <p>Find your public library. Your account opens to it from now on, on every device.</p>
-    ${mine ? `<p class="small-print" style="margin:0 0 8px">You were just browsing this one:</p><button class="btn" id="keepLib" style="width:100%;margin-bottom:14px">Use ${esc(S.libName)}</button><div class="divider">or pick another</div>` : ""}
-    <form id="libStepForm" class="pick-form">
-      <label for="libStepIn">Your library</label>
-      <div class="row">
-        <input id="libStepIn" type="text" autocomplete="off" list="libNames" placeholder="Name, city or website">
-        <datalist id="libNames">${LIBS ? [...LIBS.values()].map(n => `<option value="${esc(n)}">`).join("") : ""}</datalist>
-        <button type="submit">Save</button>
-      </div>
-      <p class="err" id="acctErr" role="alert"></p>
-    </form>
-    <details class="how">
-      <summary>Where do I find that?</summary>
-      <p>Type your library's name and pick it from the list, or type its website (like <b>spl.org</b>) and press Save.</p>
-    </details>
-    <button class="link small-print" id="skipLib">I'll do this later</button>`);
+    <p>Your account opens to it from now on, on every device.</p>
+    <div class="stack">
+      ${mine ? `<button class="btn" id="keepLib">Use ${esc(libLabel())}</button>` : ""}
+      <button class="btn${mine ? " ghost" : ""}" id="findLib">${mine ? "Pick a different library" : "Find my library"}</button>
+    </div>
+    <button class="link small-print" id="skipLib" style="margin-top:14px">I'll do this later</button>`);
   if (!$("#account").open) $("#account").showModal();
-  const done = () => {
+  if (mine) $("#keepLib").onclick = () => {
     save(); flushSave();   // the library is what the account is for, so it saves right away
-    homeScreenOffer(() => { $("#account").close(); toast(`Your library is ${S.libName}.`); boot(); });
+    homeScreenOffer(() => { $("#account").close(); toast(`Your library is ${libLabel()}.`); boot(); });
   };
-  if (mine) $("#keepLib").onclick = done;
-  $("#libStepForm").onsubmit = async e => {
-    e.preventDefault();
-    try {
-      const v = $("#libStepIn").value.trim();
-      const byName = LIBS && [...LIBS].find(([, n]) => n.toLowerCase() === v.toLowerCase());
-      const info = await api("/api/library?q=" + encodeURIComponent(byName ? byName[0] : v));
-      S.lib = info.slug; S.libName = info.name; S.demo = false; S.shelf = "all"; S.sort = "";
-      done();
-    } catch (err) { $("#acctErr").textContent = err.message; }
+  $("#findLib").onclick = () => {
+    pickingForAccount = true;
+    $("#account").close();
+    setTimeout(() => { showHome(); $("#pickInput").focus(); }, 120);   // after the dialog's own history step settles
   };
   $("#skipLib").onclick = () => homeScreenOffer(() => { $("#account").close(); showHome(); });
+}
+// A library was just chosen. If that was the account's set-up step, save it now and finish set-up.
+function libraryPicked() {
+  if (!pickingForAccount || !me.uid) return;
+  pickingForAccount = false;
+  flushSave();
+  homeScreenOffer(() => { if ($("#account").open) $("#account").close(); toast(`Your library is ${libLabel()}. It's saved to your account.`); });
 }
 
 async function passkeyCreate() {
@@ -1155,7 +1173,7 @@ function suggest() {
   suggAt = sugg.length ? 0 : -1;
   box.innerHTML = sugg.length
     ? sugg.map((e, i) => `<li role="option" id="lib-${i}" data-i="${i}" aria-selected="${i === suggAt}">${esc(e[0])}<small>${esc(place(e) || (e[4] ? "Canada and beyond" : ""))}${e[4] ? ' · <b class="ready">Ready</b>' : ""}</small></li>`).join("")
-    : `<li class="none">No match yet. Try just your town, or paste your library's website and press Open.</li>`;
+    : `<li class="none">No match yet. Try just your town, or paste your library's catalog link and press Open.</li>`;
   box.hidden = false; $("#pickInput").setAttribute("aria-expanded", "true");
 }
 function moveSugg(d) {
@@ -1174,72 +1192,101 @@ $("#pickInput").addEventListener("keydown", e => {
 $("#libList").addEventListener("mousedown", e => { const li = e.target.closest("li[data-i]"); if (li) { e.preventDefault(); $("#libList").hidden = true; pickEntry(sugg[+li.dataset.i]); } });
 document.addEventListener("click", e => { if (!e.target.closest("#pickForm")) $("#libList").hidden = true; });
 
-// A library from the list: open it if we can show it, otherwise say so kindly and count the request.
-function pickEntry(e) {
+// A library from the list: its shelf if we can read it, its catalog if anyone has given us the link, otherwise we ask for it.
+async function pickEntry(e) {
   if (!e) return;
   $("#pickInput").value = e[0];
   if (e[4]) return chooseLibrary(e[4]);
-  showUnconnected({ name: e[0], city: e[1], st: e[2] });
+  const info = { name: e[0], city: e[1], st: e[2] };
+  const known = (await loadCatalogs())[`${info.name}|${info.st}`];
+  if (known) { requestLibrary(info); return enterGuest({ ...info, catalog: readCatalogLink(known) }); }
+  showUnconnected(info);
 }
 const sentRequests = new Set();
 function requestLibrary(info) {
-  const key = (info.host || `${info.name}|${info.st || ""}`).toLowerCase();
+  const url = info.catalog?.url || "";
+  const key = (url || info.host || `${info.name}|${info.st || ""}`).toLowerCase();
   if (!key || sentRequests.has(key)) return;
   sentRequests.add(key);
   let last = 0;
   try { last = +localStorage.getItem("nl-req-" + key) || 0; } catch {}
   if (Date.now() - last < 864e5) return;
   fetch("/api/request", { method: "POST", headers: { "content-type": "application/json" }, keepalive: true,
-    body: JSON.stringify({ name: info.name || "", city: info.city || "", st: info.st || "", host: info.host || "", vendor: info.vendor || "" }) })
+    body: JSON.stringify({ name: info.name || "", city: info.city || "", st: info.st || "", host: info.catalog?.host || info.host || "", vendor: info.catalog?.system || info.vendor || "", url }) })
     .then(r => { if (r.ok) try { localStorage.setItem("nl-req-" + key, String(Date.now())); } catch {} }).catch(() => sentRequests.delete(key));
 }
 let nopeInfo = null;
-// Catalog addresses we know for libraries we cannot read yet (added by hand as visitors tell us), keyed "Name|ST".
+// Catalog links for libraries we cannot read (public/catalogs.json, added by hand, plus links visitors have given), keyed "Name|ST".
 let CATALOGS = null;
-const loadCatalogs = () => (CATALOGS ||= fetch("/catalogs.json").then(r => r.json()).catch(() => ({})));
-async function enterGuest(info) {
-  const known = (await loadCatalogs())[`${info.name}|${info.st || ""}`];
-  if (known) info = { ...info, host: info.host || known.host, vendor: info.vendor || known.vendor };
-  S.guest = { name: info.name || "your library", city: info.city || "", st: info.st || "", host: info.host || "", vendor: info.vendor || "" };
-  S.lib = GUEST; S.libName = S.guest.name; S.demo = true; S.shelf = "all"; S.sort = "top"; clearFilter("all"); S.fmt = "all";
+const loadCatalogs = () => (CATALOGS ||= Promise.all([
+  fetch("/catalogs.json").then(r => r.json()).catch(() => ({})),
+  api("/api/catalogs").catch(() => ({})),
+]).then(([hand, learned]) => {
+  const out = { ...learned };
+  for (const [k, v] of Object.entries(hand)) out[k] = typeof v === "string" ? v : v.url || "https://" + v.host;
+  return out;
+}));
+// Movies to browse for a library we cannot read; every "Check at" button searches the library's own catalog.
+function enterGuest(info) {
+  const cat = info.catalog?.url ? info.catalog : null;
+  S.guest = { name: info.name || "", city: info.city || "", st: info.st || "", catalog: cat };
+  S.lib = GUEST; S.libName = S.guest.name; S.demo = false; S.shelf = "all"; S.sort = "top"; clearFilter("all"); S.fmt = "all";
   toastDismissed = "";
   save(); boot();
+  libraryPicked();
 }
-function showUnconnected(info) {
+function showUnconnected(info, why) {
   nopeInfo = { ...info };
   const where = [info.city, info.st].filter(Boolean).join(", ");
-  $("#nopeTitle").textContent = info.name ? `${info.name}${where ? ` (${where})` : ""}` : info.host ? `The library at ${info.host}` : "Your library";
-  $("#nopeText").textContent = "We can't show what's on its shelves yet. Browse movies here, then check any of them at your library.";
+  $("#nopeTitle").textContent = info.name ? `${info.name}${where ? ` (${where})` : ""}` : "Your library";
+  $("#nopeText").textContent = why || "Paste the link to its catalog and we'll open movies you can check there in one tap.";
   $("#nopeErr").textContent = ""; $("#nopeUrl").value = "";
   $("#pickErr").textContent = ""; $("#libList").hidden = true;
   $("#nope").hidden = false;
   $("#nope").scrollIntoView({ block: "nearest", behavior: "smooth" });
-  requestLibrary(info);
+  if (info.name) requestLibrary(info);
+}
+// What /api/library says about a link: open the shelf, open movies with the catalog, or ask for the catalog itself.
+function openFound(info) {
+  S.lib = info.slug; S.libName = info.name; S.demo = false; S.shelf = "all"; S.sort = ""; clearFilter("all"); S.fmt = "all";
+  save(); boot();
+  libraryPicked();
+}
+function openOther(d, from = {}) {
+  const lib = { name: from.name || d.name || "", city: from.city || "", st: from.st || "", catalog: d.catalog };
+  if (d.unknown || !d.catalog) {
+    showUnconnected({ ...from, name: from.name || d.name || "" }, "We couldn't find the catalog on that page. Open your library's catalog, then copy the address from the top of the page and paste it here.");
+    nopeInfo.fallback = d.catalog;     // "Skip" still opens movies, and the check button opens that website
+    return;
+  }
+  requestLibrary(lib);
+  enterGuest(lib);
 }
 $("#nopeForm").onsubmit = async e => {
   e.preventDefault();
   const v = $("#nopeUrl").value.trim();
   if (!v) return;
   $("#nopeErr").textContent = "Looking…";
-  try {
-    const info = await api("/api/library?q=" + encodeURIComponent(v));
-    S.lib = info.slug; S.libName = info.name; S.demo = false; S.shelf = "all"; S.sort = ""; clearFilter("all"); S.fmt = "all";
-    save(); boot();
-  } catch (err) {
-    $("#nopeErr").textContent = err.data?.unsupported ? "Saved. The check button will use that website." : err.message;
-    if (err.data?.unsupported && nopeInfo) { nopeInfo.host = err.data.host || nopeInfo.host; nopeInfo.vendor = err.data.vendor || nopeInfo.vendor; }
-    if (err.data?.unsupported) requestLibrary({ name: nopeInfo?.name || "", city: nopeInfo?.city || "", st: nopeInfo?.st || "", host: err.data.host, vendor: err.data.vendor });
+  try { openFound(await api("/api/library?q=" + encodeURIComponent(v))); }
+  catch (err) {
+    if (err.data?.unsupported) openOther(err.data, nopeInfo || {});
+    else $("#nopeErr").textContent = err.message;
   }
 };
+$("#nopeSkip").onclick = () => enterGuest({ ...(nopeInfo || {}), catalog: nopeInfo?.fallback || null });
 
 async function chooseLibrary(q, demo = false) {
   $("#pickErr").textContent = ""; $("#nope").hidden = true; $("#libList").hidden = true;
+  const looking = setTimeout(() => { $("#pickErr").textContent = "Looking…"; }, 400);
   try {
     const info = await api("/api/library?q=" + encodeURIComponent(q));
+    clearTimeout(looking); $("#pickErr").textContent = "";
     S.lib = info.slug; S.libName = info.name; S.demo = demo; S.shelf = "all"; S.sort = ""; clearFilter("all"); S.fmt = "all";
     save(); boot();
+    if (!demo) libraryPicked();
   } catch (e) {
-    if (e.data?.unsupported) showUnconnected({ name: "", host: e.data.host, vendor: e.data.vendor });
+    clearTimeout(looking); $("#pickErr").textContent = "";
+    if (e.data?.unsupported) openOther(e.data);
     else $("#pickErr").textContent = e.message;
   }
 }
@@ -1265,11 +1312,11 @@ addEventListener("popstate", () => {
 
 function showHome(fromPop) {
   if (!fromPop && history.state?.nl === "shelf") history.replaceState({ nl: "home" }, "", "/");
-  $("#pick").hidden = false; $("#shelf").hidden = true;
+  $("#pick").hidden = false; $("#shelf").hidden = true; $("#nope").hidden = true;
   $("#libBtn").hidden = true;   // the home page has its own "Back to" button
   if (S.lib) loadSnap();
   $("#resume").hidden = !S.lib;
-  if (S.lib) $("#resume").textContent = `Back to ${S.libName || S.lib}`;
+  if (S.lib) $("#resume").textContent = `Back to ${S.libName || (isGuest() ? "your library" : S.lib)}`;
   $("#pickInput").value = ""; $("#pickErr").textContent = "";
   window.scrollTo(0, 0);
   paintCopyToast();
@@ -1280,7 +1327,7 @@ function boot(fromPop) {
   counts();
   if (!S.lib) { showHome(); $("#libBtn").hidden = true; return; }
   $("#pick").hidden = true; $("#shelf").hidden = false;
-  $("#libBtn").hidden = false; $("#libBtn").textContent = S.libName || S.lib;
+  $("#libBtn").hidden = false; $("#libBtn").textContent = S.libName || (isGuest() ? "Your library" : S.lib);
   paintControls(); setTab("browse"); reload();
 }
 
@@ -1300,7 +1347,7 @@ $("#pickForm").onsubmit = async e => {
   const fresh = suggFor === $("#pickInput").value;                      // the list on screen was made from the text now in the box
   const list = fresh && sugg.length ? sugg : rank(v);
   if (list.length) return pickEntry(list[fresh ? Math.max(0, suggAt) : 0]);   // the highlighted library, or the best match for what was typed
-  $("#pickErr").textContent = "We couldn't find that. Try just your town, or paste your library's website.";
+  $("#pickErr").textContent = "We couldn't find that. Try just your town, or paste your library's catalog link.";
 };
 $("#trySeattle").onclick = () => chooseLibrary("seattle", true);
 $("#howBtn").onclick = () => { $("#howText").hidden = !$("#howText").hidden; };

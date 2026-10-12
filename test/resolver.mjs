@@ -52,15 +52,23 @@ await test("a known library website whose homepage hides its catalog still opens
   internet({ "https://vpl.ca": { status: 403 } }, { vpl: "http://bibliocms.com/" });
   assert.equal((await ask("https://www.vpl.ca/")).body.slug, "vpl");
 });
-await test("another catalog system is recognized and reported, never a dead end", async () => {
+await test("another catalog system is recognized from the link alone, with a title search for it", async () => {
   internet({ "https://roxbury.aspendiscovery.org": { status: 403 } }, {});
   const r = await ask("https://roxbury.aspendiscovery.org/?browseCategory=x");
   assert.equal(r.status, 404); assert.equal(r.body.unsupported, true);
-  assert.equal(r.body.vendor, "Aspen Discovery"); assert.equal(r.body.host, "roxbury.aspendiscovery.org");
+  assert.equal(r.body.vendor, "aspen"); assert.equal(r.body.host, "roxbury.aspendiscovery.org"); assert.equal(r.body.name, "Roxbury");
+  assert.equal(r.body.catalog.find, "https://roxbury.aspendiscovery.org/Search/Results?lookfor={q}&searchIndex=Keyword&searchSource=local");
   assert.doesNotMatch(r.body.error, /catalog|BiblioCommons/i, "the message never uses jargon");
-  internet({ "https://freelibrary.org": { html: '<a href="https://catalog.freelibrary.org/">Catalog</a> polaris' }, "https://catalog.freelibrary.org/": { html: "<title>Polaris</title>" } }, {});
+  // a homepage whose "Catalog" link leads to a Polaris catalog on another domain
+  internet({ "https://freelibrary.org": { html: '<title>Home | Free Library of Somewhere</title><a href="https://catalog.freelibrary.org/">Catalog</a>' },
+    "https://catalog.freelibrary.org/": { html: '<a href="/polaris/search/default.aspx?ctx=3.1033.0.0.6">Search</a> PowerPAC' } }, {});
   const p = await ask("freelibrary.org");
-  assert.equal(p.status, 404); assert.equal(p.body.vendor, "Polaris");
+  assert.equal(p.status, 404); assert.equal(p.body.vendor, "polaris"); assert.equal(p.body.name, "Free Library of Somewhere");
+  assert.match(p.body.catalog.find, /^https:\/\/catalog\.freelibrary\.org\/polaris\/search\/searchresults\.aspx\?ctx=1\.1033\.0\.0\.1&type=Keyword&term=\{q\}/);
+  // nothing recognizable: the website itself is the fallback, flagged as unknown so the page asks for the catalog link
+  internet({ "https://tinylib.org": { html: "<title>Tiny Library</title><p>Hours</p>" } }, {});
+  const t = await ask("tinylib.org");
+  assert.equal(t.status, 404); assert.equal(t.body.unknown, true); assert.equal(t.body.catalog.url, "https://tinylib.org");
 });
 await test("a site that is down or slow returns a controlled answer", async () => {
   globalThis.fetch = async () => { throw new DOMException("timeout", "TimeoutError"); };

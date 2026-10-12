@@ -188,8 +188,8 @@ function merge(rows, seen) {
 }
 
 function openDetail(r) {
-  const yearNote = r.fy && r.disc && r.fy !== r.disc ? `<b>${r.fy}</b> film, ${r.disc} disc` : `<b>${esc(filmYear(r))}</b>`;
-  const fmtLabel = r.fmts || r.fmt;
+  const yearNote = r.fy && r.disc && r.fy !== r.disc && !isGuest() ? `<b>${r.fy}</b> film, ${r.disc} disc` : `<b>${esc(filmYear(r))}</b>`;
+  const fmtLabel = isGuest() ? "" : r.fmts || r.fmt;
   const imdb = r.imdb ? `<a class="btn ghost" href="https://www.imdb.com/title/${esc(r.imdb)}/" target="_blank" rel="noopener">IMDb ${r.r ? r.r.toFixed(1) : ""}</a>` : "";
   const av = r.avail ? `<b style="color:var(--ok)">On the shelf</b>${r.eds ? "" : ` · ${r.copies} of ${r.total} in`}`
     : `<b style="color:var(--stamp)">All checked out</b>${r.holds ? ` · ${r.holds} on hold` : ""}`;
@@ -200,7 +200,7 @@ function openDetail(r) {
       <div>
         <h2>${esc(r.title)}</h2>
         ${r.sub ? `<p class="sub">${esc(r.sub)}</p>` : ""}
-        <div class="facts">${r.f === "g" ? esc(r.plat || "") || yearNote : yearNote} · ${esc(fmtLabel)}${r.r ? ` · <b>★ ${r.r.toFixed(1)}</b> from ${Number(r.v).toLocaleString()} votes` : ""}${isGuest() ? "" : `<br><span id="liveAv">${av}</span>`}</div>
+        <div class="facts">${r.f === "g" ? esc(r.plat || "") || yearNote : yearNote}${fmtLabel ? ` · ${esc(fmtLabel)}` : ""}${r.r ? ` · <b>★ ${r.r.toFixed(1)}</b> from ${Number(r.v).toLocaleString()} votes` : ""}${isGuest() ? "" : `<br><span id="liveAv">${av}</span>`}</div>
         <p id="detailSynopsis">${r.desc ? esc(r.desc) : isGuest() ? (r.imdb ? `<a href="https://www.imdb.com/title/${esc(r.imdb)}/" target="_blank" rel="noopener">Read the synopsis on IMDb</a>` : "") : `<a href="${esc(r.url)}" target="_blank" rel="noopener">Read the synopsis at your library</a>`}</p>
         ${r.eds && r.eds.length > 1 && !isGuest() ? `<div class="facts">${r.eds.map(e => `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.fmt)}${e.disc ? ` (${e.disc})` : ""}</a>: ${e.avail ? `<b style="color:var(--ok)">${e.copies} in</b>` : `all out${e.holds ? `, ${e.holds} holds` : ""}`}`).join("<br>")}</div>` : ""}
         <div class="actions">
@@ -652,6 +652,7 @@ function snapFilter() {
 function snapSort(L) {
   const by = {
     top: (a, b) => ((b.v >= 1000 ? b.r : 0) - (a.v >= 1000 ? a.r : 0)) || b.v - a.v,
+    pop: (a, b) => b.v - a.v,
     title: (a, b) => norm(a.title).localeCompare(norm(b.title)),
     year: (a, b) => ((b.fy || b.disc || 0) - (a.fy || a.disc || 0)) || b.n - a.n,
     old: (a, b) => ((a.fy || a.disc || 9999) - (b.fy || b.disc || 9999)) || a.n - b.n,
@@ -1126,6 +1127,11 @@ function setTab(tab) {
 function paintControls() {
   document.body.classList.toggle("guest", isGuest());
   document.querySelectorAll("#fmt button").forEach(b => b.setAttribute("aria-pressed", b.dataset.fmt === S.fmt));
+  // the nationwide shelf has no arrival dates, so it offers "Most popular" in place of "Newest arrivals"
+  const first = $("#sort").options[0], guest = isGuest();
+  if ((first.value === "pop") !== guest) { first.value = guest ? "pop" : ""; first.textContent = guest ? "Most popular" : "Newest arrivals"; }
+  if (guest && !S.sort) S.sort = "pop";
+  if (!guest && S.sort === "pop") S.sort = "";
   $("#sort").value = S.sort;
 }
 
@@ -1230,7 +1236,7 @@ const loadCatalogs = () => (CATALOGS ||= Promise.all([
 function enterGuest(info) {
   const cat = info.catalog?.url ? info.catalog : null;
   S.guest = { name: info.name || "", city: info.city || "", st: info.st || "", catalog: cat };
-  S.lib = GUEST; S.libName = S.guest.name; S.demo = false; S.shelf = "all"; S.sort = "top"; clearFilter("all"); S.fmt = "all";
+  S.lib = GUEST; S.libName = S.guest.name; S.demo = false; S.shelf = "all"; S.sort = "pop"; clearFilter("all"); S.fmt = "all";
   toastDismissed = "";
   save(); boot();
   libraryPicked();

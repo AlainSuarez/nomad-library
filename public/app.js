@@ -191,7 +191,7 @@ function openDetail(r) {
   const yearNote = r.fy && r.disc && r.fy !== r.disc && !isGuest() ? `<b>${r.fy}</b> film, ${r.disc} disc` : `<b>${esc(filmYear(r))}</b>`;
   const fmtLabel = isGuest() ? "" : r.fmts || r.fmt;
   const imdb = r.imdb ? `<a class="btn ghost" href="https://www.imdb.com/title/${esc(r.imdb)}/" target="_blank" rel="noopener">IMDb ${r.r ? r.r.toFixed(1) : ""}</a>` : "";
-  const av = r.avail ? `<b style="color:var(--ok)">On the shelf</b>${r.eds ? "" : ` · ${r.copies} of ${r.total} in`}`
+  const av = r.avail ? `<b style="color:var(--ok)">On the shelf</b>${r.eds || r.copies == null ? "" : ` · ${r.copies} of ${r.total} in`}`
     : `<b style="color:var(--stamp)">All checked out</b>${r.holds ? ` · ${r.holds} on hold` : ""}`;
   $("#detailBody").innerHTML = `<div class="in">
     <button class="x" data-close aria-label="Close">×</button>
@@ -202,7 +202,7 @@ function openDetail(r) {
         ${r.sub ? `<p class="sub">${esc(r.sub)}</p>` : ""}
         <div class="facts">${r.f === "g" ? esc(r.plat || "") || yearNote : yearNote}${fmtLabel ? ` · ${esc(fmtLabel)}` : ""}${r.r ? ` · <b>★ ${r.r.toFixed(1)}</b> from ${Number(r.v).toLocaleString()} votes` : ""}${isGuest() ? "" : `<br><span id="liveAv">${av}</span>`}</div>
         <p id="detailSynopsis">${r.desc ? esc(r.desc) : isGuest() ? (r.imdb ? `<a href="https://www.imdb.com/title/${esc(r.imdb)}/" target="_blank" rel="noopener">Read the synopsis on IMDb</a>` : "") : `<a href="${esc(r.url)}" target="_blank" rel="noopener">Read the synopsis at your library</a>`}</p>
-        ${r.eds && r.eds.length > 1 && !isGuest() ? `<div class="facts">${r.eds.map(e => `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.fmt)}${e.disc ? ` (${e.disc})` : ""}</a>: ${e.avail ? `<b style="color:var(--ok)">${e.copies} in</b>` : `all out${e.holds ? `, ${e.holds} holds` : ""}`}`).join("<br>")}</div>` : ""}
+        ${r.eds && r.eds.length > 1 && !isGuest() ? `<div class="facts">${r.eds.map(e => `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.fmt)}${e.disc ? ` (${e.disc})` : ""}</a>: ${e.avail ? `<b style="color:var(--ok)">${e.copies == null ? "on the shelf" : `${e.copies} in`}</b>` : `all out${e.holds ? `, ${e.holds} holds` : ""}`}`).join("<br>")}</div>` : ""}
         <div class="actions">
           ${isGuest()
             ? (checkUrl(r) ? `<a class="btn" href="${esc(checkUrl(r))}" target="_blank" rel="noopener">Check at ${esc(libLabel())}</a>`

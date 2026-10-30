@@ -15,7 +15,12 @@ const store = {
   set(v) { try { localStorage.setItem("nl", JSON.stringify(v)); } catch {} },
 };
 let S = Object.assign({ lib: null, libName: "", fmt: "all", shelf: "all", sort: "", onShelf: false, faves: {}, watch: null,
-  genre: "", coll: "", plat: "", y0: 0, y1: 0, minR: 0 }, store.get());
+  genres: [], coll: "", plat: "", y0: 0, y1: 0, minR: 0 }, store.get());
+if (!Array.isArray(S.genres)) S.genres = [];
+if ("genre" in S) {                       // saved before genres could be combined
+  if (S.genre && !S.genres.length) S.genres = [S.genre];
+  delete S.genre; store.set(S);
+}
 let me = { uid: null, passkeys: 0 };
 let saveTimer = null;
 
@@ -382,6 +387,13 @@ const GENRES = [
   ["war", "War", "war"], ["musical", "Musical", "musical"], ["superhero", "Superhero", "superhero"], ["biography", "Biography", "biography"],
   ["history", "History", "history"], ["sports", "Sports", "sports"], ["tv", "TV shows", "tv"],
 ];
+// Picked genres widen the shelf (horror or thriller); Foreign and TV shows narrow it (foreign horror).
+const NARROW = new Set(["foreign", "tv"]);
+function genreMatch(r) {
+  if (!S.genres.length) return true;
+  const wide = S.genres.filter(g => !NARROW.has(g));
+  return S.genres.every(g => !NARROW.has(g) || r.genres.includes(g)) && (!wide.length || wide.some(g => r.genres.includes(g)));
+}
 const COLLECTIONS = [["mustsee", "1001 must-sees"], ["oscar", "Oscar winners"], ["registry", "Film Registry"], ["criterion", "Criterion"], ["ghibli", "Studio Ghibli"]];
 const FMT_NAME = { b: "Blu-ray", d: "DVD", g: "Game" };
 const YEAR_MIN = 1920, YEAR_MAX = new Date().getFullYear();
@@ -628,7 +640,7 @@ function snapFilter() {
   return L.filter(r => {
     if (want && !(r.fs || r.f).includes(want)) return false;
     if (S.fmt === "games") { if (S.plat && r.plat !== S.plat) return false; }
-    else if (S.genre && !r.genres.includes(S.genre)) return false;
+    else if (!genreMatch(r)) return false;
     if (S.onShelf && !r.avail) return false;
     const y = r.fy || r.disc;
     if (S.y0 && (!y || y < S.y0)) return false;
@@ -692,18 +704,20 @@ async function reload() {
   paintCopyToast();
   if (instant()) return snapRender();
   // live mode: while no copy is ready, for collections, and for whole-catalog searches
-  S.shelf = S.fmt === "games" ? "all" : S.coll || (GENRES.find(g => g[0] === S.genre)?.[2]) || "all";
+  // the live catalog takes one shelf at a time: the first picked genre that widens, else the first one
+  const g = S.genres.find(x => !NARROW.has(x)) || S.genres[0];
+  S.shelf = S.fmt === "games" ? "all" : S.coll || (GENRES.find(x => x[0] === g)?.[2]) || "all";
   await liveReload();
 }
 
 // ---- filters ---------------------------------------------------------------------
 
-const activeCount = () => [S.genre, S.coll, S.plat, S.y0 || S.y1, S.minR, S.onShelf].filter(Boolean).length;
+const activeCount = () => S.genres.length + [S.coll, S.plat, S.y0 || S.y1, S.minR, S.onShelf].filter(Boolean).length;
 
 function paintActive() {
   const bits = [];
-  const g = GENRES.find(x => x[0] === S.genre), c = COLLECTIONS.find(x => x[0] === S.coll);
-  if (S.fmt !== "games" && g) bits.push(["genre", g[1]]);
+  const c = COLLECTIONS.find(x => x[0] === S.coll);
+  if (S.fmt !== "games") for (const [k, l] of GENRES) if (S.genres.includes(k)) bits.push(["genre:" + k, l]);
   if (c) bits.push(["coll", c[1]]);
   if (S.fmt === "games" && S.plat) bits.push(["plat", S.plat]);
   if (S.y0 || S.y1) bits.push(["years", `${S.y0 || YEAR_MIN} to ${S.y1 || YEAR_MAX}`]);
@@ -716,7 +730,8 @@ function paintActive() {
 }
 
 function clearFilter(k) {
-  if (k === "all" || k === "genre") S.genre = "";
+  if (k === "all" || k === "genre") S.genres = [];
+  if (k.startsWith("genre:")) S.genres = S.genres.filter(g => g !== k.slice(6));
   if (k === "all" || k === "coll") S.coll = "";
   if (k === "all" || k === "plat") S.plat = "";
   if (k === "all" || k === "years") { S.y0 = 0; S.y1 = 0; }
@@ -737,7 +752,7 @@ function openFilters() {
     <button class="x" data-close aria-label="Close">×</button>
     <h2>Filters</h2>
     ${games ? `<h3>Platform</h3><div class="chipgrid">${chip("data-plat", "", "All", !S.plat)}${plats.map(p => chip("data-plat", p, p, S.plat === p)).join("")}</div>`
-      : `<h3>Genre</h3><div class="chipgrid">${chip("data-genre", "", "All", !S.genre && !S.coll)}${GENRES.map(([k, l]) => chip("data-genre", k, l, S.genre === k && !S.coll)).join("")}</div>
+      : `<h3>Genre</h3><div class="chipgrid">${chip("data-genre", "", "All", !S.genres.length && !S.coll)}${GENRES.map(([k, l]) => chip("data-genre", k, l, S.genres.includes(k) && !S.coll)).join("")}</div>
          <h3>Collections</h3><div class="chipgrid">${COLLECTIONS.map(([k, l]) => chip("data-coll", k, l, S.coll === k)).join("")}</div>`}
     <h3>Year</h3>
     <div class="range2">
@@ -763,8 +778,12 @@ function filtChanged(rerender = true) {
 
 $("#filtBody").addEventListener("click", e => {
   const g = e.target.closest("[data-genre]"), c = e.target.closest("[data-coll]"), p = e.target.closest("[data-plat]");
-  if (g) { S.genre = g.dataset.genre; S.coll = ""; filtChanged(); }
-  else if (c) { S.coll = S.coll === c.dataset.coll ? "" : c.dataset.coll; if (S.coll) S.genre = ""; filtChanged(); }
+  if (g) {
+    const k = g.dataset.genre;
+    S.genres = !k ? [] : S.genres.includes(k) ? S.genres.filter(x => x !== k) : [...S.genres, k];
+    S.coll = ""; filtChanged();
+  }
+  else if (c) { S.coll = S.coll === c.dataset.coll ? "" : c.dataset.coll; if (S.coll) S.genres = []; filtChanged(); }
   else if (p) { S.plat = p.dataset.plat; filtChanged(); }
   else if (e.target.id === "filtClear") { clearFilter("all"); filtChanged(); }
   else if (e.target.id === "filtShow") { $("#filters").close(); }

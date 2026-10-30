@@ -187,6 +187,20 @@ async function pickLibrary(page, slug) {
   await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
 }
 
+// The shelf shows one card per film (DVD, Blu-ray and reissues fold together; the first record speaks for the card).
+// Written out here on its own so the expected counts don't come from the app's code.
+function oneCardPerFilm(rows) {
+  const art = /^(the|a|an|le|la|les|el|los|il)\s+/i;
+  const nm = t => String(t || "").toLowerCase().trim().replace(/\s*[:(\[].*$/, "").replace(/&/g, " and ").replace(/[^a-z0-9 ]+/g, " ").replace(art, "").replace(/\s+/g, " ").trim();
+  const seen = new Set(), out = [];
+  for (const r of rows) {
+    if (r[3] === "g") continue;
+    const k = nm(r[1]) + "|" + (r[13] || r[4] || "") + "|" + (r[9] ? nm(r[2]) : "");
+    if (!seen.has(k)) { seen.add(k); out.push(r); }
+  }
+  return out;
+}
+
 // ---- scenarios -----------------------------------------------------------------------------------------
 const SCENARIOS = [];
 const scenario = (name, fn) => SCENARIOS.push([name, fn]);
@@ -226,6 +240,85 @@ scenario("cold first visit, large real catalog: usable shelf time, then search/f
   await page.click("#grid .card"); await sleep(400);
   ok(await page.$eval("#detail", d => d.open), "detail opens");
   ok(W.availReqs.length >= 1, "live shelf check requested for the opened title");
+  ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
+});
+
+scenario("genres combine: picked genres widen, Foreign and TV narrow, with the year range; chips remove one at a time", async b => {
+  const real = realRows("chipublib");
+  const rows = real ? real.rows : makeRows("chipublib", 6000);
+  const W = world({ snap: { chipublib: { body: snapBody(rows) } } });
+  const { page } = await newPage(b, W);
+  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
+  await pickLibrary(page, "chipublib");
+  await waitCards(page, 12);
+  await page.waitForFunction(() => /\d[\d,]* titles/.test(document.querySelector("#status").textContent), { timeout: 20000 });
+  // the expected counts come straight from the rows, without the app's code
+  const G = r => new Set(r[8] ? r[8].split(",") : []), Y = r => r[14] || r[4] || 0;
+  const films = oneCardPerFilm(rows);
+  const expect = (pick, y0 = 0, y1 = 9999) => {
+    const narrow = pick.filter(g => g === "foreign" || g === "tv"), wide = pick.filter(g => !narrow.includes(g));
+    return films.filter(r => { const g = G(r), y = Y(r);
+      return (!y0 || (y && y >= y0)) && (y1 === 9999 || (y && y <= y1)) && narrow.every(n => g.has(n)) && (!wide.length || wide.some(w => g.has(w))); }).length;
+  };
+  const shown = async () => { const t = await status(page); const m = t.match(/([\d,]+) titles/); return m ? +m[1].replace(/,/g, "") : -1; };
+  const pick = async k => { await page.click(`#filtBody [data-genre="${k}"]`); await sleep(60); };
+  const setYears = (a, z) => page.evaluate((a, z) => {
+    const y0 = document.querySelector("#y0"), y1 = document.querySelector("#y1");
+    y0.value = a; y0.dispatchEvent(new Event("input", { bubbles: true })); y1.value = z; y1.dispatchEvent(new Event("input", { bubbles: true }));
+  }, a, z);
+  const close = async () => { await page.evaluate(() => document.querySelector("#filters").close()); await sleep(250); };
+  // horror + thriller + crime, 1950 to 1985
+  await page.click("#filtBtn"); await sleep(150);
+  for (const k of ["horror", "thriller", "crime"]) await pick(k);
+  const pressed = await page.$$eval('#filtBody [data-genre][aria-pressed="true"]', e => e.map(x => x.dataset.genre));
+  ok(pressed.join() === "horror,thriller,crime", `three genres stay picked together (${pressed})`);
+  await setYears(1950, 1985);
+  const btn = await page.$eval("#filtShow", e => e.textContent);
+  await close();
+  const e1 = expect(["horror", "thriller", "crime"], 1950, 1985), s1 = await shown();
+  ok(s1 === e1 && e1 > 0, `horror or thriller or crime, 1950 to 1985: ${s1} shown, ${e1} expected`);
+  ok(btn.includes(e1.toLocaleString()), `the Show button counted the same (${btn})`);
+  const tags = await page.$$eval("#active .tag", e => e.map(x => x.textContent.replace("×", "").trim()));
+  ok(tags.join("|") === "Horror|Thriller|Crime|1950 to 1985", `one chip per genre plus the years (${tags.join("|")})`);
+  // removing one chip removes only that genre
+  await page.click('#active [data-clear="genre:thriller"]'); await sleep(250);
+  const e2 = expect(["horror", "crime"], 1950, 1985), s2 = await shown();
+  ok(s2 === e2, `thriller chip removed: horror or crime ${s2} shown, ${e2} expected`);
+  // foreign + horror = foreign horror films
+  await page.click("#filtBtn"); await sleep(150);
+  await page.click('#filtBody [data-genre=""]'); await sleep(60);
+  await pick("foreign"); await pick("horror"); await setYears(1920, new Date().getFullYear());
+  await close();
+  const e3 = expect(["foreign", "horror"]), s3 = await shown();
+  ok(s3 === e3 && e3 > 0 && e3 < expect(["horror"]), `foreign horror: ${s3} shown, ${e3} expected (horror alone ${expect(["horror"])})`);
+  // comedy + romance widen
+  await page.click("#filtBtn"); await sleep(150);
+  await page.click('#filtBody [data-genre=""]'); await sleep(60);
+  await pick("comedy"); await pick("romance"); await pick("romance"); await pick("romance");
+  await close();
+  const e4 = expect(["comedy", "romance"]), s4 = await shown();
+  ok(s4 === e4 && e4 > expect(["comedy"]), `comedy or romance (romance toggled off and on): ${s4} shown, ${e4} expected`);
+  // a collection still replaces genres, and All clears them
+  await page.click("#filtBtn"); await sleep(150);
+  await page.click('#filtBody [data-coll="criterion"]'); await sleep(60);
+  ok((await page.$$eval('#filtBody [data-genre][aria-pressed="true"]', e => e.length)) === 0, "picking a collection clears the genres");
+  await close();
+  ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
+});
+
+scenario("a genre saved before genres could combine still opens as that one genre", async b => {
+  const real = realRows("chipublib");
+  const rows = real ? real.rows : makeRows("chipublib", 6000);
+  const W = world({ snap: { chipublib: { body: snapBody(rows) } } });
+  const { page } = await newPage(b, W, { seedState: { lib: "chipublib", libName: "Chicago Public Library", fmt: "all", genre: "western" } });
+  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
+  await openSaved(page);
+  await page.waitForFunction(() => /\d[\d,]* titles/.test(document.querySelector("#status").textContent), { timeout: 20000 });
+  const n = oneCardPerFilm(rows).filter(r => (r[8] || "").split(",").includes("western")).length;
+  const t = await status(page);
+  ok(t.startsWith(n.toLocaleString() + " titles"), `old saved 'western' still filters (${t.slice(0, 30)}, expected ${n})`);
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("nl")));
+  ok(Array.isArray(saved.genres) && saved.genres.join() === "western" && !("genre" in saved), `saved as a list now (${JSON.stringify(saved.genres)})`);
   ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
 });
 

@@ -283,12 +283,13 @@ img { max-width: 100%; }
 .legal .link { font: inherit; color: inherit; font-weight: inherit; }
 .upd-toast { display: flex; gap: 12px; align-items: flex-start; width: 330px; padding: 14px 38px 14px 14px; animation: updIn .35s ease-out; }
 .upd-toast .upd-ico { width: 34px; height: 34px; border-radius: 6px; flex-shrink: 0; }
+.upd-toast .ct-body { flex: 1 1 auto; min-width: 0; }   /* without this the text and the email row push past the card's right edge (Chris 11.1.26 screenshot) */
 .upd-toast b { font-size: 15px; }
 .upd-toast p.lead { margin: 2px 0 0; font-size: 13px; line-height: 1.45; opacity: .9; }
 .upd-toast form { margin-top: 10px; }
 .upd-toast .row { margin-top: 0; gap: 6px; }
-.upd-toast .row input { background: var(--paper); color: var(--ink); border-color: var(--paper); padding: 9px 10px; font-size: 16px; }
-.upd-toast .row button { background: var(--paper); color: var(--ink); padding: 9px 12px; }
+.upd-toast .row input { flex: 1 1 0; width: 0; background: var(--paper); color: var(--ink); border-color: var(--paper); padding: 9px 10px; font-size: 16px; }
+.upd-toast .row button { background: var(--paper); color: var(--ink); padding: 9px 12px; flex-shrink: 0; white-space: nowrap; }
 .upd-toast .err { color: inherit; font-size: 13px; }
 .upd-toast .err:empty { display: none; }
 @keyframes updIn { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }

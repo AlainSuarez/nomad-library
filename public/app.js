@@ -1239,7 +1239,7 @@ function showUpdatesCard() {
   const card = Object.assign(document.createElement("div"), { id: "updToast", className: "copy-toast upd-toast" });
   card.setAttribute("role", "dialog"); card.setAttribute("aria-label", "Get updates");
   card.innerHTML = `<img class="upd-ico" src="/icons/icon-192.png" alt="">
-    <div class="ct-body"><b>Want updates?</b><p class="lead">Get an email when new libraries and features arrive. We'll never spam you.</p>
+    <div class="ct-body"><b>Want email updates?</b>
     <form class="email-form" data-kind="updates" novalidate><div class="row"><input type="email" name="email" autocomplete="email" placeholder="Your email" required aria-label="Your email"><input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"><button type="submit">Sign up</button></div><p class="err" role="status" aria-live="polite"></p></form></div>
     <button class="ct-x" type="button" aria-label="Dismiss">\u00d7</button>`;
   card.querySelector(".ct-x").onclick = () => card.remove();

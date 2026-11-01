@@ -492,7 +492,7 @@ scenario("rapid library switching: a slow copy for the library you left never re
   const { page } = await newPage(b, W);
   await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
   await pickLibrary(page, "alpha"); await sleep(300);
-  await page.evaluate(() => document.querySelector("#libBtn").click()); await sleep(200);
+  await page.evaluate(() => document.querySelector("#libBtn").click()); await sleep(200); await page.evaluate(() => document.querySelector("#addLib")?.click()); await sleep(300);
   // back on the home page: choose the other library
   await page.waitForSelector("#pickInput", { visible: true });
   await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", "https://beta.bibliocommons.com/");
@@ -603,7 +603,7 @@ scenario("a library we cannot read yet: browse the nationwide shelf and check ti
     ["https://catalog.lacountylibrary.org/client/en_US/default", "https://catalog.lacountylibrary.org/client/en_US/default/search/results?qu="],
     ["https://mdpls.na.iiivega.com/", "https://mdpls.na.iiivega.com/search?query="], ["catalog.freelibrary.org", "https://catalog.freelibrary.org/"]]) {
     await page.evaluate(() => document.querySelector("#detail").close()).catch(() => {}); await sleep(500);
-    await page.evaluate(() => document.querySelector("#libBtn").click()); await page.waitForSelector("#pickInput", { visible: true });
+    await page.evaluate(() => document.querySelector("#libBtn").click()); await sleep(200); await page.evaluate(() => document.querySelector("#addLib")?.click()); await page.waitForSelector("#pickInput", { visible: true });
     await page.$eval("#grid", e => { e.innerHTML = ""; });
     await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", pasted); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
     await waitCards(page, 12); await sleep(300); await page.click("#grid .card .cover"); await sleep(400);
@@ -612,7 +612,7 @@ scenario("a library we cannot read yet: browse the nationwide shelf and check ti
   }
   ok(!(await page.evaluate(() => document.documentElement.innerHTML)).includes("google.com/search"), "no Google search link anywhere");
   await page.evaluate(() => document.querySelector("#detail").close()).catch(() => {}); await sleep(500);
-  await page.evaluate(() => document.querySelector("#libBtn").click()); await page.waitForSelector("#pickInput", { visible: true });
+  await page.evaluate(() => document.querySelector("#libBtn").click()); await sleep(200); await page.evaluate(() => document.querySelector("#addLib")?.click()); await page.waitForSelector("#pickInput", { visible: true });
   await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", "https://robeson.nccardinal.org/eg/opac/home"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
   await sleep(1500);
   ok(!(await page.$("#guestIntro[open]")), "the pop-up shows once per library, not every visit");
@@ -628,7 +628,7 @@ scenario("finding your library: paste any catalog link or website, no second pas
   await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#pickInput", { visible: true });
   const paste = async v => {
-    if (!(await page.$eval("#pick", e => !e.hidden))) { await page.evaluate(() => document.querySelector("#libBtn").click()); await page.waitForSelector("#pickInput", { visible: true }); }
+    if (!(await page.$eval("#pick", e => !e.hidden))) { await page.evaluate(() => document.querySelector("#libBtn").click()); await sleep(200); await page.evaluate(() => document.querySelector("#addLib")?.click()); await page.waitForSelector("#pickInput", { visible: true }); }
     await page.$eval("#grid", e => { e.innerHTML = ""; });      // so the next wait sees the new shelf, not the last one
     await page.$eval("#pickInput", e => { e.value = ""; }); await page.type("#pickInput", v); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
   };
@@ -784,12 +784,44 @@ scenario("narrow phone layout: no sideways scrolling on home, shelf, detail", as
   const d = await page.$eval("#detail", e => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, w: innerWidth }; });
   ok(d.l >= -1 && d.r <= d.w + 1, `detail sheet fits the screen (${Math.round(d.l)}..${Math.round(d.r)} of ${d.w})`);
   await page.evaluate(() => document.querySelector("#detail").close()); await sleep(500);   // closing a dialog triggers a delayed history.back()
-  await page.evaluate(() => document.querySelector("#libBtn").click());
+  await page.evaluate(() => document.querySelector("#libBtn").click()); await sleep(200);
+  const lm = await page.$eval("#account", e => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, w: innerWidth }; });
+  ok(lm.l >= -1 && lm.r <= lm.w + 1, `library list fits the screen (${Math.round(lm.l)}..${Math.round(lm.r)} of ${lm.w})`);
+  await page.evaluate(() => document.querySelector("#addLib")?.click());
   await page.waitForSelector("#pickInput", { visible: true }); await page.type("#pickInput", "https://beta.bibliocommons.com/"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
   await page.waitForSelector("#copyToast", { timeout: 8000 });
   const m = await page.$eval("#copyToast", e => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, b: r.bottom, w: innerWidth, h: innerHeight }; });
   ok(m.l >= 0 && m.r <= m.w && m.b <= m.h, `corner card fits a phone screen (${Math.round(m.l)}..${Math.round(m.r)} of ${m.w})`);
   try { await page.screenshot({ path: path.join(os.tmpdir(), "nl-mobile-toast.png") }); } catch {}
+});
+
+scenario("several library cards: the list remembers each library, All my libraries merges them, a hold button per library", async b => {
+  const W = world({ snap: { alpha: { body: snapBody(makeRows("alpha", 300, { prefix: "FILM" })) }, beta: { body: snapBody(makeRows("beta", 200, { prefix: "FILM" })) } } });
+  const { page } = await newPage(b, W);
+  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
+  await pickLibrary(page, "alpha"); await waitCards(page, 12);
+  await page.evaluate(() => document.querySelector("#libBtn").click()); await sleep(200);
+  ok(!(await page.$("[data-lib-mine]")), "one library: no combined option yet");
+  await page.evaluate(() => document.querySelector("#addLib").click());
+  await pickLibrary(page, "beta");
+  await page.waitForFunction(() => /Beta/.test(document.querySelector("#libBtn").textContent) && !document.querySelector("#shelf").hidden, { timeout: 20000 }); await waitCards(page, 12);
+  await page.evaluate(() => document.querySelector("#libBtn").click()); await sleep(200);
+  const names = await page.$$eval("[data-lib-i]", bs => bs.map(x => x.textContent));
+  ok(names.length === 2, `both libraries listed (${names.join(" | ")})`);
+  await page.evaluate(() => document.querySelector("[data-lib-mine]").click());
+  await page.waitForFunction(() => /from 2 libraries/.test(document.querySelector("#status").textContent), { timeout: 20000 });
+  const st = await page.$eval("#status", e => e.textContent);
+  ok(/^300 titles/.test(st), `films both libraries carry become one card (${st})`);
+  ok(/All my libraries/.test(await page.$eval("#libBtn", e => e.textContent)), "header says All my libraries");
+  await page.type("#q", "film movie 7 delta"); await sleep(600);
+  await page.evaluate(() => [...document.querySelectorAll("#grid .card")].find(c => c.querySelector(".ttl").textContent.trim() === "FILM Movie 7 Delta").querySelector(".cover").click()); await sleep(500);
+  const holds = await page.$$eval("#detailBody .actions a.btn", as => as.filter(a => /at /.test(a.textContent)).map(a => a.href));
+  ok(holds.length === 2 && holds.some(h => h.includes("alpha.")) && holds.some(h => h.includes("beta.")), `a hold button for each library (${holds.length})`);
+  await page.evaluate(() => document.querySelector("#detail").close()); await sleep(500);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => /from 2 libraries/.test(document.querySelector("#status")?.textContent || ""), { timeout: 20000 }).catch(() => {});
+  ok(/All my libraries/.test(await page.$eval("#libBtn", e => e.textContent)), "a reload stays on All my libraries");
+  ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
 });
 
 // ---- run ------------------------------------------------------------------------------------------------

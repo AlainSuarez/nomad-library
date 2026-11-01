@@ -135,6 +135,11 @@ select { padding: 8px 10px; border: 1.5px solid var(--rule); border-radius: var(
 .acct-body h2 { font: 700 22px/1.25 var(--sans); margin: 0 0 8px; padding-right: 30px; }
 .acct-body p { color: var(--ink-2); margin: 0 0 14px; }
 .acct-body .stack { display: grid; gap: 10px; }
+.acct-body .stack { grid-template-columns: minmax(0, 1fr); }
+.lib-row { display: flex; gap: 8px; align-items: stretch; min-width: 0; }
+.lib-row .btn { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.x-lib { flex-shrink: 0; width: 44px; background: none; border: 1.5px solid var(--line, currentColor); border-radius: var(--r); color: inherit; font-size: 20px; cursor: pointer; opacity: .7; }
+.x-lib:hover { opacity: 1; }
 .code { font: 500 22px/1 var(--mono); letter-spacing: .08em; text-align: center; padding: 16px; border: 1.5px dashed var(--ink); border-radius: var(--r); background: var(--card); user-select: all; }
 .small-print { font-size: 13px; }
 .divider { display: flex; align-items: center; gap: 10px; color: var(--ink-2); font: 12px var(--mono); margin: 6px 0; }

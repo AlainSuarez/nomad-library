@@ -1384,9 +1384,12 @@ function countVisit() {
 countVisit();
 
 const linked = new URLSearchParams(location.search).get("lib");
+// library.nomadovernormal.com/?updates (the video description link) opens straight on the updates sign-up card.
+const wantsUpdates = new URLSearchParams(location.search).has("updates");
 history.replaceState({ nl: "home" }, "", "/");
 if (linked && linked !== GUEST) chooseLibrary(linked, linked !== S.lib || !!S.demo);
 else showHome();
+if (wantsUpdates) showUpdatesCard().querySelector("input[type=email]")?.focus();
 counts();
 refreshMe().then(() => {
   if (!me.uid) return;

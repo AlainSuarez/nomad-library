@@ -1430,17 +1430,25 @@ function openTyped() {
 
 // ---- back button -------------------------------------------------------------------
 
-let popClosing = false;
+// Each open window owns one history step. Closing one steps back (selfBack keeps that step from closing the window
+// under it, e.g. the trailer over the movie page); the Back button closes the window on top.
+let popClosing = false, selfBack = 0;
+const openStack = [];
 for (const d of document.querySelectorAll("dialog")) {
   d.showModal = function () {
     if (this.open) return;
     HTMLDialogElement.prototype.showModal.call(this);
+    openStack.push(this);
     history.pushState({ nl: "dialog" }, "");
   };
-  d.addEventListener("close", () => { if (!popClosing && history.state?.nl === "dialog") history.back(); });
+  d.addEventListener("close", () => {
+    const i = openStack.lastIndexOf(d); if (i >= 0) openStack.splice(i, 1);
+    if (!popClosing && history.state?.nl === "dialog") { selfBack++; history.back(); }
+  });
 }
 addEventListener("popstate", () => {
-  const open = [...document.querySelectorAll("dialog")].find(d => d.open);
+  if (selfBack) { selfBack--; return; }
+  const open = openStack.filter(d => d.open).pop() || [...document.querySelectorAll("dialog")].find(d => d.open);
   if (open) { popClosing = true; open.close(); popClosing = false; return; }
   if (history.state?.nl === "dialog") return history.back();
   if (!$("#shelf").hidden && history.state?.nl !== "shelf") showHome(true);

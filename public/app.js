@@ -914,15 +914,22 @@ const isStandalone = () => matchMedia("(display-mode: standalone)").matches || n
 const isPhone = () => /iphone|ipad|ipod|android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /macintosh/i.test(navigator.userAgent));
 let installPrompt = null;
 addEventListener("beforeinstallprompt", e => { e.preventDefault(); installPrompt = e; });
+addEventListener("appinstalled", () => { installPrompt = null; });
+// Safari on a Mac (17+) installs with File > Add to Dock; Chrome and Edge fire beforeinstallprompt. Firefox can't install.
+const isSafariMac = () => /macintosh/i.test(navigator.userAgent) && /safari/i.test(navigator.userAgent) && !/chrome|chromium|edg\//i.test(navigator.userAgent) && navigator.maxTouchPoints < 2;
 const SHARE_ICON = `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5v11"/><path d="M8 7.3l4-3.8 4 3.8"/><path d="M6.5 11H6a1.5 1.5 0 0 0-1.5 1.5v6.5A1.5 1.5 0 0 0 6 20.5h12a1.5 1.5 0 0 0 1.5-1.5v-6.5A1.5 1.5 0 0 0 18 11h-.5"/></svg>`;
 const ADD_ICON = `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8.5v7M8.5 12h7"/></svg>`;
 const DOTS_ICON = `<svg class="ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>`;
 
-// Shown once right after sign-up or sign-in on a phone, unless it's already on the home screen.
+// Shown once right after sign-up or sign-in, unless it's already installed: phones get the home screen, computers
+// (Chrome, Edge, Safari on a Mac) get the app in its own window (Chris 11.1.26: offer it on desktop too, like Keiser).
 function homeScreenOffer(then) {
-  if (!isPhone() || isStandalone()) return then();
-  acctView(`<h2>Keep Nomad Library on your phone</h2>
-    <p>Put it on your home screen and it opens like an app, with one tap. It takes about 20 seconds.</p>
+  if (isStandalone()) return then();
+  const computer = !isPhone();
+  if (computer && !installPrompt && !isSafariMac()) return then();
+  acctView(`${computer ? `<h2>Keep Nomad Library on your computer</h2>
+    <p>Install it and it opens in its own window, right from your Dock or taskbar. It takes about 10 seconds.</p>` : `<h2>Keep Nomad Library on your phone</h2>
+    <p>Put it on your home screen and it opens like an app, with one tap. It takes about 20 seconds.</p>`}
     <div class="stack">
       <button class="btn" id="hsShow">Show me how</button>
       <button class="btn ghost" id="hsLater">Maybe later</button>
@@ -933,7 +940,8 @@ function homeScreenOffer(then) {
 }
 
 function homeScreenGuide(then, tab) {
-  const android = tab ? tab === "android" : /android/i.test(navigator.userAgent);
+  const t = tab || (/android/i.test(navigator.userAgent) ? "android" : isPhone() ? "iphone" : "computer");
+  const android = t === "android";
   const ios = `<ol class="steps">
       <li>Open <b>library.nomadovernormal.com</b> in Safari.</li>
       <li>Tap the Share button ${SHARE_ICON}. If you don't see it, tap ${DOTS_ICON} first, then Share.</li>
@@ -945,16 +953,25 @@ function homeScreenGuide(then, tab) {
       <li>Tap the menu ${DOTS_ICON} in the top right corner.</li>
       <li>Tap <b>Add to home screen</b>, then <b>Install</b>.</li>
       <li>Open Nomad Library from your home screen. You'll still be signed in.</li></ol>`;
-  acctView(`<h2>Put it on your home screen</h2>
-    ${isStandalone() ? `<p>You're already using Nomad Library from your home screen, so you're all set.</p>` : ""}
+  const desk = `${installPrompt ? `<button class="btn" id="hsInstall" style="width:100%;margin-bottom:14px">Install Nomad Library</button>` : ""}
+    ${isSafariMac() ? `<ol class="steps">
+      <li>In Safari, open the <b>File</b> menu.</li>
+      <li>Choose <b>Add to Dock</b>, then click <b>Add</b>.</li>
+      <li>Open Nomad Library from your Dock and sign in once more with your passkey. The Dock app keeps its own sign-in.</li></ol>`
+    : `<ol class="steps">
+      <li>Open <b>library.nomadovernormal.com</b> in Chrome or Microsoft Edge.</li>
+      <li>Click the install icon at the right end of the address bar, or open the menu ${DOTS_ICON} and choose <b>Cast, save and share</b>, then <b>Install page as app</b>.</li>
+      <li>Click <b>Install</b>. It opens in its own window, and you'll still be signed in.</li></ol>`}`;
+  acctView(`<h2>${t === "computer" ? "Install it on your computer" : "Put it on your home screen"}</h2>
+    ${isStandalone() ? `<p>You're already using the Nomad Library app, so you're all set.</p>` : ""}
     <div class="seg hs-tabs" role="tablist">
-      <button role="tab" data-t="iphone" aria-pressed="${!android}">iPhone</button><button role="tab" data-t="android" aria-pressed="${android}">Android</button>
+      <button role="tab" data-t="iphone" aria-pressed="${t === "iphone"}">iPhone</button><button role="tab" data-t="android" aria-pressed="${android}">Android</button><button role="tab" data-t="computer" aria-pressed="${t === "computer"}">Computer</button>
     </div>
-    ${android ? droid : ios}
+    ${t === "computer" ? desk : android ? droid : ios}
     <button class="btn" id="hsDone" style="width:100%;margin-top:6px">Done</button>`);
   if (!$("#account").open) $("#account").showModal();
   document.querySelectorAll(".hs-tabs button").forEach(b => b.onclick = () => homeScreenGuide(then, b.dataset.t));
-  $("#hsInstall")?.addEventListener("click", async () => { const p = installPrompt; installPrompt = null; await p.prompt(); homeScreenGuide(then, "android"); });
+  $("#hsInstall")?.addEventListener("click", async () => { const p = installPrompt; installPrompt = null; await p.prompt(); homeScreenGuide(then, t); });
   $("#hsDone").onclick = () => (then ? then() : $("#account").close());
 }
 
@@ -1061,7 +1078,7 @@ function openAccount() {
     acctView(`<h2>Your account</h2>
       <p>Your library, favorites and watchlist are saved and follow you to any device you sign in on.</p>
       <div class="stack">
-        ${isPhone() && !isStandalone() ? `<button class="btn" id="hsGuide">Put it on your home screen</button>` : ""}
+        ${isStandalone() ? "" : isPhone() ? `<button class="btn" id="hsGuide">Put it on your home screen</button>` : installPrompt || isSafariMac() ? `<button class="btn" id="hsGuide">Install it on your computer</button>` : ""}
         ${passkeysOK() ? `<button class="btn${isPhone() && !isStandalone() ? " ghost" : ""}" id="addKey">Add a passkey on this device</button>` : ""}
         <button class="btn ghost" id="newCode">Make a new backup code</button>
         <button class="btn ghost" id="signOut">Sign out</button>

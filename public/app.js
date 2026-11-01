@@ -236,7 +236,7 @@ function openDetail(r) {
             : isMine() ? holdButtons(r)
             : `<a class="btn" href="${esc((r.eds?.find(e => e.avail) || r).url)}" target="_blank" rel="noopener">${r.avail ? "Place a hold" : "Get in line"}</a>`}
           ${isMine() ? guestLibs().map(e => `<a class="btn ghost" href="${esc(searchLink(e.guest.catalog, r.title))}" target="_blank" rel="noopener">Check at ${esc(shortName(e.name) || "your other library")}</a>`).join("") : ""}
-          <a class="btn ghost" href="/t?q=${encodeURIComponent(r.title + " " + (r.fy || ""))}" target="_blank" rel="noopener">Trailer</a>
+          <a class="btn ghost" href="/t?q=${encodeURIComponent(r.title + " " + (r.fy || ""))}" target="_blank" rel="noopener" data-trailer>Trailer</a>
           ${imdb}
           <button class="btn ghost" data-fav="${esc(r.id)}">${isFav(r) ? "♥ Saved" : "♡ Save"}</button>
         </div>
@@ -1546,6 +1546,26 @@ function openFeedback() {
   };
 }
 $("#fbBtn").onclick = openFeedback;
+
+// ---- trailers play on the page (Chris 11.1.26); Cmd/Ctrl/middle-click still opens a new tab, and so does "Watch on YouTube"
+document.addEventListener("click", async e => {
+  const a = e.target.closest("a[data-trailer]");
+  if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+  e.preventDefault();
+  const q = new URL(a.href).searchParams.get("q") || "";
+  const box = $("#trailer"), body = $("#trailerBody");
+  const bar = link => `<div class="tr-bar"><a href="${esc(link)}" target="_blank" rel="noopener">Watch on YouTube</a><button type="button" data-close>Close</button></div>`;
+  body.innerHTML = `<div class="frame"><div class="tr-msg">Finding the trailer…</div></div>${bar(a.href)}`;
+  box.showModal();
+  try {
+    const d = await (await fetch("/t?format=json&q=" + encodeURIComponent(q), { signal: AbortSignal.timeout(12000) })).json();
+    if (!box.open) return;
+    body.innerHTML = d.vid
+      ? `<div class="frame"><iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(d.vid)}?autoplay=1&rel=0&modestbranding=1" title="Trailer" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>${bar("https://www.youtube.com/watch?v=" + d.vid)}`
+      : `<div class="frame"><div class="tr-msg">We couldn't find a trailer for this one.</div></div>${bar(d.search)}`;
+  } catch { if (box.open) body.innerHTML = `<div class="frame"><div class="tr-msg">The trailer didn't load.</div></div>${bar(a.href)}`; }
+});
+$("#trailer").addEventListener("close", () => { $("#trailerBody").innerHTML = ""; });   // stops the video
 document.addEventListener("click", e => {
   const o = e.target.closest("[data-open]"); if (o) { const r = rowsById.get(o.dataset.open); if (r) openDetail(r); return; }
   const f = e.target.closest("[data-fav]"); if (f) { toggleFav(f.dataset.fav); return; }

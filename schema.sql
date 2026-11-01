@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS imdb (k TEXT PRIMARY KEY, d TEXT NOT NULL) WITHOUT RO
 -- one row per library: when it was last opened, and where its weekly copy stands
 CREATE TABLE IF NOT EXISTS libs (
   slug TEXT PRIMARY KEY, name TEXT,
+  url TEXT,                              -- the catalog link for libraries we copy ourselves (vega.*, polaris.*, ...); ALTER TABLE libs ADD COLUMN url TEXT (11.1.26)
   last_opened INTEGER NOT NULL DEFAULT 0,
   ver INTEGER NOT NULL DEFAULT 0,        -- the finished copy people load
   total INTEGER NOT NULL DEFAULT 0,

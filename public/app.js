@@ -1,7 +1,7 @@
 // Nomad Library: any BiblioCommons library's movies on one browsable shelf.
 // The server only relays the library's catalog. Ratings, sorting and your lists
 // all happen here in the browser, which keeps the site free to run.
-import { readCatalogLink, searchLink } from "/catalog.js";
+import { readCatalogLink, searchLink, isReaderLib, readerId, readerCatalog, readerUrl } from "/catalog.js";
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -144,16 +144,20 @@ const badgeHTML = r => (r.r && r.v >= 50 ? `<span class="badge"><b>★</b> ${r.r
 const GUEST = "shelf";
 const isGuest = () => S.lib === GUEST;
 const isMine = () => S.lib === MINE;
+// no shelf status to show: guests, and copies from catalogs that don't report it (snap "na", e.g. older LS2 PAC)
+const noAvail = () => isGuest() || (!isMine() && SNAP?.lib === S.lib && !!SNAP?.na);
 const libKey = e => e.lib === GUEST ? "shelf:" + (e.guest?.catalog?.host || e.guest?.host || e.name || "") : e.lib;
 const readableLibs = () => S.libs.filter(e => e.lib !== GUEST);
 const guestLibs = () => S.libs.filter(e => e.lib === GUEST && e.guest?.catalog?.url);
 const shortName = n => String(n || "").replace(/^the\s+/i, "").replace(/\s+(public|county|free|city|regional|district|area)?\s*(public\s+)?library.*$/i, "").trim() || n;
+const libUrlOf = lib => S.libs.find(e => e.lib === lib)?.url || (lib === S.lib ? S.libUrl : "") || "";
 const libNameOf = lib => S.libs.find(e => e.lib === lib)?.name || (lib === S.lib ? S.libName : lib);
 // The library being shown joins the saved list (Seattle's "try it" demo never does).
 function rememberLib() {
   if (!S.lib || S.demo || isMine()) return;
   const e = { lib: S.lib, name: S.libName || "" };
   if (isGuest()) e.guest = S.guest || {};
+  if (isReaderLib(S.lib) && (S.libUrl || libUrlOf(S.lib))) e.url = S.libUrl || libUrlOf(S.lib);
   const k = libKey(e), i = S.libs.findIndex(x => libKey(x) === k);
   if (i >= 0) S.libs[i] = e; else S.libs.push(e);
   if (S.libs.length > 8) S.libs = S.libs.slice(-8);
@@ -175,7 +179,7 @@ function cardHTML(r) {
     ? `<img loading="lazy" src="${esc(r.img)}" alt="" onload="if(this.naturalWidth<20)this.onerror()" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'noimg',textContent:${esc(JSON.stringify(r.title))}}))">`
     : `<span class="noimg">${esc(r.title)}</span>`;
   const where = isMine() && r.avail ? [...new Set((r.eds || [r]).filter(e => e.avail).map(e => e.lib))] : [];
-  const av = isGuest() ? "" : r.avail ? `<span class="avail in">On the shelf${where.length > 1 ? ` at ${where.length} libraries` : where.length ? ` at ${esc(shortName(libNameOf(where[0])))}` : ""}</span>`
+  const av = noAvail() ? "" : r.avail ? `<span class="avail in">On the shelf${where.length > 1 ? ` at ${where.length} libraries` : where.length ? ` at ${esc(shortName(libNameOf(where[0])))}` : ""}</span>`
     : `<span class="avail out">All out${r.holds ? ` · ${r.holds} hold${r.holds > 1 ? "s" : ""}` : ""}</span>`;
   return `<div class="card" data-id="${esc(r.id)}">
     <button class="cover" data-open="${esc(r.id)}" aria-label="${esc(r.title)}">${cover}${rating}</button>
@@ -226,7 +230,7 @@ function openDetail(r) {
       <div>
         <h2>${esc(r.title)}</h2>
         ${r.sub ? `<p class="sub">${esc(r.sub)}</p>` : ""}
-        <div class="facts">${r.f === "g" ? esc(r.plat || "") || yearNote : yearNote}${fmtLabel ? ` · ${esc(fmtLabel)}` : ""}${r.r ? ` · <b>★ ${r.r.toFixed(1)}</b> from ${Number(r.v).toLocaleString()} votes` : ""}${isGuest() ? "" : `<br><span id="liveAv">${av}</span>`}</div>
+        <div class="facts">${r.f === "g" ? esc(r.plat || "") || yearNote : yearNote}${fmtLabel ? ` · ${esc(fmtLabel)}` : ""}${r.r ? ` · <b>★ ${r.r.toFixed(1)}</b> from ${Number(r.v).toLocaleString()} votes` : ""}${noAvail() ? "" : `<br><span id="liveAv">${av}</span>`}</div>
         <p id="detailSynopsis">${r.desc ? esc(r.desc) : isGuest() ? (r.imdb ? `<a href="https://www.imdb.com/title/${esc(r.imdb)}/" target="_blank" rel="noopener">Read the synopsis on IMDb</a>` : "") : `<a href="${esc(r.url)}" target="_blank" rel="noopener">Read the synopsis at your library</a>`}</p>
         ${(r.eds && r.eds.length > 1 || isMine()) && !isGuest() ? `<div class="facts" id="edList">${editionsHTML(r)}</div>` : ""}
         <div class="actions">
@@ -234,7 +238,7 @@ function openDetail(r) {
             ? (checkUrl(r) ? `<a class="btn" href="${esc(checkUrl(r))}" target="_blank" rel="noopener">Check at ${esc(libLabel())}</a>`
               : `<button class="btn" type="button" id="addCatalog">Check at your library</button>`)
             : isMine() ? holdButtons(r)
-            : `<a class="btn" href="${esc((r.eds?.find(e => e.avail) || r).url)}" target="_blank" rel="noopener">${r.avail ? "Place a hold" : "Get in line"}</a>`}
+            : `<a class="btn" href="${esc((r.eds?.find(e => e.avail) || r).url)}" target="_blank" rel="noopener">${noAvail() ? `See it at ${esc(shortName(libLabel()))}` : r.avail ? "Place a hold" : "Get in line"}</a>`}
           ${isMine() ? guestLibs().map(e => `<a class="btn ghost" href="${esc(searchLink(e.guest.catalog, r.title))}" target="_blank" rel="noopener">Check at ${esc(shortName(e.name) || "your other library")}</a>`).join("") : ""}
           <a class="btn ghost" href="/t?q=${encodeURIComponent(r.title + " " + (r.fy || ""))}" target="_blank" rel="noopener" data-trailer>Trailer</a>
           ${imdb}
@@ -244,7 +248,7 @@ function openDetail(r) {
     </div></div>`;
   $("#detail").showModal();
   const detailLib = S.lib;
-  if (!r.desc && r.f !== "g" && !isGuest()) {
+  if (!r.desc && r.f !== "g" && !isGuest() && !isReaderLib((r.eds?.[0] || r).lib || detailLib)) {
     const p = new URLSearchParams({ lib: (r.eds?.[0] || r).lib || detailLib, q: r.title, fmt: "all", page: "1" });
     api("/api/search?" + p).then(d => {
       const ids = new Set((r.eds || [r]).map(e => e.rid || e.id));
@@ -281,7 +285,9 @@ async function liveStatus(r) {
   const eds = r.eds || [r];
   try {
     const byLib = new Map();
-    for (const e of eds.slice(0, 8)) { const l = e.lib || S.lib; if (!byLib.has(l)) byLib.set(l, []); byLib.get(l).push(e); }
+    // libraries we copy ourselves (Vega...) have no live check yet: their copy's shelf status stands
+    for (const e of eds.slice(0, 8)) { const l = e.lib || S.lib; if (isReaderLib(l)) continue; if (!byLib.has(l)) byLib.set(l, []); byLib.get(l).push(e); }
+    if (!byLib.size) return;
     const d = {};
     await Promise.all([...byLib].map(async ([l, list]) => {
       const got = await api(`/api/avail?lib=${encodeURIComponent(l)}&ids=${list.map(e => e.rid || e.id).join(",")}`).catch(() => ({}));
@@ -456,12 +462,12 @@ const coverUrl = (c, sc) => {
   const [, isbn, upc, oclc] = c.split("~");
   return `https://secure.syndetics.com/index.aspx?isbn=${isbn}/MC.GIF&client=${encodeURIComponent(sc)}&type=xw12&oclc=${oclc}&upc=${upc}`;
 };
-function fromRow(x, lib, sc) {
+function fromRow(x, lib, sc, rec) {
   return {
     id: x[0], title: x[1], sub: x[2], f: x[3], fmt: FMT_NAME[x[3]], disc: x[4] || null, img: coverUrl(x[5], sc),
     avail: !!x[6], holds: x[7], genres: x[8] ? x[8].split(",") : [], tv: !!x[9], plat: x[10],
     r: x[11] || 0, v: x[12] || 0, imdb: x[13] || null, fy: x[14] || null,
-    url: `https://${lib}.bibliocommons.com/v2/record/${x[0]}`, n: +String(x[0]).replace(/\D+/g, "").slice(-9) || 0, lib,
+    url: rec ? rec.replace("{id}", encodeURIComponent(x[0])) : `https://${lib}.bibliocommons.com/v2/record/${x[0]}`, n: +String(x[0]).replace(/\D+/g, "").slice(-9) || 0, lib,
   };
 }
 
@@ -534,13 +540,13 @@ async function fetchStatic(lib) {
 
 // Tell the copier this library is wanted. At most once per library per day per device, never in a loop.
 const wantSent = new Set();
-function wantCopy(lib) {
+function wantCopy(lib, name, url) {
   if (lib === GUEST || wantSent.has(lib)) return;
   wantSent.add(lib);
   let last = 0;
   try { last = +localStorage.getItem("nl-want-" + lib) || 0; } catch {}
   if (Date.now() - last < 864e5) return;
-  fetch("/api/want", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lib }), keepalive: true })
+  fetch("/api/want", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ lib, ...(isReaderLib(lib) ? { name: name || libNameOf(lib) || "", url: url || libUrlOf(lib) } : {}) }), keepalive: true })
     .then(async r => {
       if (!r.ok) throw new Error("copy request failed");
       const d = await r.json();
@@ -562,11 +568,11 @@ function wantCopy(lib) {
 function buildSnap(lib, d) {
   const films = [], games = [], seenF = new Map();
   for (const x of d.rows) {
-    const r = fromRow(x, lib, d.sc);
+    const r = fromRow(x, lib, d.sc, d.rec);
     rowsById.set(r.id, r);
     if (r.f === "g") games.push(r); else films.push(r);
   }
-  return { lib, ver: d.ver || d.finished, finished: d.finished, films: merge(films, seenF), games };
+  return { lib, ver: d.ver || d.finished, finished: d.finished, films: merge(films, seenF), games, na: !!d.na };
 }
 
 // Everyone asking for the same library shares one attempt; a failed attempt is remembered for 5 minutes so
@@ -589,7 +595,7 @@ async function openMine() {
     if (!d) { missing.push(e.name || e.lib); return; }
     finished = Math.min(finished, d.finished);
     for (const x of d.rows) {
-      const r = fromRow(x, e.lib, d.sc);
+      const r = fromRow(x, e.lib, d.sc, d.rec);
       r.rid = r.id; r.id = e.lib + "~" + r.id;
       rowsById.set(r.id, r);
       (r.f === "g" ? games : films).push(r);
@@ -688,7 +694,9 @@ function openCopy(lib) {
       }
       const r = await fetchStatic(lib);
       if (r.d) { idbPut(lib, r.d); arrive(r.d); return; }
-      clearTimeout(timer); wantCopy(lib); live("missing"); readCopyProgress(lib);
+      clearTimeout(timer);
+      if (isReaderLib(lib)) { settle(null); if (lib === S.lib) enterReader({ name: S.libName, catalog: readerCatalog(lib, libUrlOf(lib)) }, lib); return; }   // its copy is gone: wait on the popular shelf
+      wantCopy(lib); live("missing"); readCopyProgress(lib);
     } catch (e) {
       clearTimeout(timer); wantCopy(lib); live("error");
     }
@@ -723,7 +731,7 @@ function snapFilter() {
     if (want && !(r.fs || r.f).includes(want)) return false;
     if (S.fmt === "games") { if (S.plat && r.plat !== S.plat) return false; }
     else if (!genreMatch(r)) return false;
-    if (S.onShelf && !r.avail) return false;
+    if (S.onShelf && !r.avail && !noAvail()) return false;
     const y = r.fy || r.disc;
     if (S.y0 && (!y || y < S.y0)) return false;
     if (S.y1 && (!y || y > S.y1)) return false;
@@ -761,7 +769,8 @@ function snapRender() {
   $("#status").innerHTML = `${snapList.length.toLocaleString()} ${S.fmt === "games" ? "games" : "titles"}` +
     (isMine() ? ` from ${SNAP.libs} ${SNAP.libs === 1 ? "library" : "libraries"}` : "") +
     (S.onShelf ? ` <span class="dim">· shelf status from ${when}, tap a title for right now</span>` : "") +
-    (q && !isMine() ? ` · <button class="link" id="wholeCat">Search the whole catalog for “${esc(q)}”</button>` : "") +
+    (q && isReaderLib(S.lib) ? ` · <a href="${esc(searchLink(readerCatalog(S.lib, libUrlOf(S.lib)), q))}" target="_blank" rel="noopener">Search ${esc(libLabel())} for “${esc(q)}”</a>` : "") +
+    (q && !isMine() && !isReaderLib(S.lib) ? ` · <button class="link" id="wholeCat">Search the whole catalog for “${esc(q)}”</button>` : "") +
     (isMine() && SNAP.missing?.length ? ` <span class="dim">· ${esc(SNAP.missing.join(", "))} ${SNAP.missing.length > 1 ? "are" : "is"} still filling in, so ${SNAP.missing.length > 1 ? "they're" : "it's"} not here yet</span>` : "");
   snapMore();
 }
@@ -838,7 +847,7 @@ function openFilters() {
     <h2>Filters</h2>
     ${games ? `<h3>Platform</h3><div class="chipgrid">${chip("data-plat", "", "All", !S.plat)}${plats.map(p => chip("data-plat", p, p, S.plat === p)).join("")}</div>`
       : `<h3>Genre</h3><div class="chipgrid">${chip("data-genre", "", "All", !S.genres.length && !S.coll)}${GENRES.map(([k, l]) => chip("data-genre", k, l, S.genres.includes(k) && !S.coll)).join("")}</div>
-         ${isMine() ? "" : `<h3>Collections</h3><div class="chipgrid">${COLLECTIONS.map(([k, l]) => chip("data-coll", k, l, S.coll === k)).join("")}</div>`}`}
+         ${isMine() || isReaderLib(S.lib) ? "" : `<h3>Collections</h3><div class="chipgrid">${COLLECTIONS.map(([k, l]) => chip("data-coll", k, l, S.coll === k)).join("")}</div>`}`}
     <h3>Year</h3>
     <div class="range2">
       <label>From <output id="y0o">${S.y0 || YEAR_MIN}</output><input type="range" id="y0" min="${YEAR_MIN}" max="${YEAR_MAX}" value="${S.y0 || YEAR_MIN}"></label>
@@ -846,7 +855,7 @@ function openFilters() {
     </div>
     ${games ? "" : `<h3>Rating</h3>
     <label class="range1">At least <output id="mro">${S.minR ? "★ " + S.minR : "any"}</output><input type="range" id="minR" min="0" max="9" step="0.5" value="${S.minR}"></label>`}
-    ${isGuest() ? "" : `<label class="toggle big"><input type="checkbox" id="onShelfF" ${S.onShelf ? "checked" : ""}> On the shelf now</label>`}
+    ${noAvail() ? "" : `<label class="toggle big"><input type="checkbox" id="onShelfF" ${S.onShelf ? "checked" : ""}> On the shelf now</label>`}
     <div class="stack" style="margin-top:18px">
       <button class="btn" id="filtShow">Show ${filterCount() ? filterCount() + " " : ""}titles</button>
       <button class="link" id="filtClear" style="justify-self:center">Clear all</button>
@@ -1305,6 +1314,8 @@ function requestLibrary(info) {
 // Movies to browse for a library we cannot read; every "Check at" button searches the library's own catalog.
 function enterGuest(info) {
   const cat = info.catalog?.url ? info.catalog : null;
+  const rid = readerId(cat);
+  if (rid) return enterReader(info, rid);
   S.guest = { name: info.name || "", catalog: cat };
   S.lib = GUEST; S.libName = S.guest.name; S.demo = false; S.shelf = "all"; S.sort = "pop"; clearFilter("all"); S.fmt = "all";
   toastDismissed = "";
@@ -1312,13 +1323,64 @@ function enterGuest(info) {
   if (!pickingForAccount) guestIntro();
   libraryPicked();
 }
+// A catalog we copy ourselves (Vega so far). If its copy exists it opens like any library. If not, the copier is asked
+// for it and the visitor browses popular movies (Check at searches their catalog) until it's ready, usually within the hour.
+const copyReady = async id => {
+  try { if (await idbGet(id)) return true; } catch {}
+  try { return (await fetch(SNAP_BASE + encodeURIComponent(id) + ".json.gz", { method: "HEAD", cache: "no-cache", signal: AbortSignal.timeout(6000) })).ok; } catch { return false; }
+};
+async function enterReader(info, id) {
+  const name = info.name || S.libs.find(e => e.lib === id)?.name || "";
+  const url = (info.catalog?.url ? readerUrl(info.catalog) : "") || libUrlOf(id);
+  if (!(await copyReady(id))) {
+    wantCopy(id, name, url);
+    const cat = info.catalog?.url ? info.catalog : readerCatalog(id, url);
+    S.guest = { name, catalog: cat, reader: id };
+    S.lib = GUEST; S.libName = name; S.demo = false; S.shelf = "all"; S.sort = "pop"; clearFilter("all"); S.fmt = "all";
+    toastDismissed = "";
+    rememberLib(); save(); boot();
+    if (!pickingForAccount) guestIntro();
+    libraryPicked();
+    return;
+  }
+  openReaderLib(id, name, url);
+  libraryPicked();
+}
+function openReaderLib(id, name, url) {
+  // the waiting guest entry for this catalog becomes the real library
+  S.libs = S.libs.filter(e => !(e.lib === GUEST && readerId(e.guest?.catalog) === id));
+  S.libUrl = url || libUrlOf(id); S.lib = id; S.libName = name || S.libs.find(e => e.lib === id)?.name || ""; S.demo = false; S.shelf = "all"; S.sort = ""; clearFilter("all"); S.fmt = "all";
+  rememberLib(); save(); boot();
+}
+// A visitor waiting on a copy: when it's ready, move them onto their library's own shelf.
+let upgradeChecked = "";
+async function upgradeGuest() {
+  const cat = guestCatalog(), id = S.guest?.noCopy ? "" : readerId(cat);
+  if (!id || upgradeChecked === id) return;
+  upgradeChecked = id;
+  if (!(await copyReady(id))) {
+    wantCopy(id, S.libName, readerUrl(cat));
+    // a catalog that turned out to block copying (a bot wall): stop promising, it stays a "Check at" library
+    try {
+      const st = (await (await fetch(SNAP_BASE + "status.json", { cache: "no-cache", signal: AbortSignal.timeout(8000) })).json()).libraries?.[id];
+      if (st && (st.state === "stuck" || (st.state === "failing" && st.attempts >= 3)) && isGuest()) { S.guest.noCopy = true; rememberLib(); save(); }
+    } catch {}
+    return;
+  }
+  if (!isGuest() || readerId(guestCatalog()) !== id) return;
+  openReaderLib(id, S.libName, readerUrl(cat));
+  toast(`${S.libName || "Your library"}'s own shelf is ready.`);
+}
 // Said once, plainly, the first time someone opens a library we can't read.
 function guestIntro() {
   const cat = guestCatalog(), key = "nl-intro-" + (cat?.host || "none");
   try { if (localStorage.getItem(key)) return; localStorage.setItem(key, "1"); } catch {}
   const who = S.libName || "Your library", at = libLabel();
   $("#guestIntroBody").innerHTML = `<div class="in acct-body"><button class="x" data-close aria-label="Close">×</button>
-    ${cat ? `<h2>${esc(who)} doesn't share its shelves with other sites</h2>
+    ${cat && readerId(cat) && !S.guest?.noCopy ? `<h2>We're copying ${esc(S.libName ? S.libName + "'s" : "your library's")} shelves now</h2>
+      <p>It's usually ready within the hour, and this page switches to your library's own movies by itself.</p>
+      <p>Until then, here are popular movies from libraries across the country. Tap any movie, then <b>Check at ${esc(at)}</b> to search your library for it.</p>`
+    : cat ? `<h2>${esc(who)} doesn't share its shelves with other sites</h2>
       <p>So we can't show what's at ${esc(at)} right now. Here are popular movies from libraries across the country instead.</p>
       <p>Tap any movie, then <b>Check at ${esc(at)}</b>, and your library's catalog opens with that movie already searched.</p>`
     : `<h2>We couldn't find your library's catalog</h2>
@@ -1475,6 +1537,7 @@ function boot(fromPop) {
   $("#pick").hidden = true; $("#shelf").hidden = false;
   $("#libBtn").hidden = false; $("#libBtn").textContent = isMine() ? "All my libraries" : S.libName || (isGuest() ? "Your library" : S.lib);
   paintControls(); setTab("browse"); reload();
+  if (isGuest()) upgradeGuest();
   maybeAskUpdates();
 }
 
@@ -1609,6 +1672,7 @@ const linked = new URLSearchParams(location.search).get("lib");
 const wantsUpdates = new URLSearchParams(location.search).has("updates");
 history.replaceState({ nl: "home" }, "", "/");
 if (linked === MINE) { if (readableLibs().length >= 2) { S.lib = MINE; S.libName = "All my libraries"; boot(); } else showHome(); }
+else if (isReaderLib(linked)) enterReader({ name: linked === S.lib ? S.libName : "" }, linked);
 else if (linked && linked !== GUEST) chooseLibrary(linked, linked !== S.lib || !!S.demo);
 else showHome();
 if (wantsUpdates) showUpdatesCard().querySelector("input[type=email]")?.focus();

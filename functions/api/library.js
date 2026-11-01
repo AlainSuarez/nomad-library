@@ -100,6 +100,16 @@ async function fromWebsite(ctx, input) {
 }
 const SOCIAL = /facebook|twitter|instagram|youtube|google\.|libbyapp|overdrive|hoopla|kanopy|linkedin|pinterest|tiktok|libcal|libguides/i;
 
+// A Vega catalog on the library's own domain (catalog.dclibrary.org) runs on "<code>.<region>.iiivega.com" behind it:
+// /lookup names the code, config.js the region. We copy it under that address.
+async function vegaHost(host) {
+  try {
+    const [code, cfg] = await Promise.all([get(`https://${host}/lookup`, 4000), get(`https://${host}/config.js`, 4000)]);
+    const c = code.html.trim().toLowerCase(), env = (cfg.html.match(/ENVIRONMENT\s*=\s*'([a-z0-9]+)'/) || [])[1];
+    return /^[a-z0-9-]{2,30}$/.test(c) && env ? `${c}.${env}.iiivega.com` : "";
+  } catch { return ""; }
+}
+
 export async function onRequestGet(ctx) {
   const q = new URL(ctx.request.url).searchParams.get("q") || "";
   if (!q.trim()) return json({ error: "Type your library's name or town, or paste its website." }, { status: 400 });
@@ -133,6 +143,7 @@ export async function onRequestGet(ctx) {
   }
   if (!info) {
     const c = other?.catalog;
+    if (c?.system === "vega" && !/\.iiivega\.com$/i.test(c.host || "")) c.vega = await vegaHost(c.host);
     return json({ error: NOPE, unsupported: true, vendor: c?.system || "", host: c?.host || "", catalog: c || null, name: other?.name || "", unknown: !!other?.unknown },
       { status: 404, headers: { "cache-control": "public, max-age=3600" } });
   }

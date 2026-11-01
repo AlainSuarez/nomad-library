@@ -5,11 +5,11 @@
 const SYSTEMS = [
   // [code, test on the whole address]
   ["bibliocommons", /\.bibliocommons\.com/i],
+  ["enterprise", /\.sirsi\.net|\/client\/[a-z]{2}_[A-Z]{2}\b/i],   // before Aspen: Aspen's "/search/results" test matches Enterprise links too
   ["aspen", /aspendiscovery\.org|[?&]browseCategory=|\/(Search\/Results|GroupedWork|Union\/Search|MyAccount\/Home)\b/i],
   ["vega", /iiivega\.com/i],
   ["encore", /\/iii\/encore/i],
   ["polaris", /polarislibrary\.com|\/polaris\//i],
-  ["enterprise", /\.sirsi\.net|\/client\/[a-z]{2}_[A-Z]{2}\b/i],
   ["evergreen", /\/eg2?\/opac|\/eg2\/|\.evergreen\./i],
   ["koha", /\/cgi-bin\/koha|koha/i],
   ["sierra", /\/search~S\d+|\/search\/[a-zX]\?|\/patroninfo|\/screens\/|webpac/i],
@@ -98,3 +98,49 @@ export function searchLink(cat, title) {
   if (cat.find && cat.find.includes("{q}")) return cat.find.replace("{q}", q);
   return cat.url || (cat.host ? `https://${cat.host}/` : "");
 }
+
+// ---- catalogs Nomad Library copies itself (readers in the nomad-library-data repo) ---------------------------
+// Library ids look like "vega.sdpl.na5.iiivega.com" ("<system>.<host>", plus "_<scope>" for some systems). BiblioCommons
+// slugs never contain a dot, so a dot is how both the page and the server tell them apart.
+export const isReaderLib = lib => typeof lib === "string" && /^[a-z0-9]+\.[a-z0-9.-]+(_[a-z0-9-]+)?$/.test(lib);
+export const READER_SYSTEMS = ["vega", "polaris", "enterprise", "carl"];
+// A catalog link -> the id we copy it under, or "" when we can't copy that system yet.
+// These mirror libFromUrl() in nomad-library-data/readers/<system>.mjs; the copier refuses a link whose id differs.
+export function readerId(cat) {
+  if (!cat || !READER_SYSTEMS.includes(cat.system)) return "";
+  if (cat.system === "vega") {
+    const vh = String(cat.vega || cat.host || "").toLowerCase();   // cat.vega: the real address behind a library's own domain (api/library.js)
+    return /^[a-z0-9-]+\.[a-z0-9]+\.iiivega\.com$/.test(vh) ? "vega." + vh : "";
+  }
+  let u; try { u = new URL(cat.url); } catch { return ""; }
+  if (!/^https?:$/.test(u.protocol)) return "";
+  const host = u.hostname.toLowerCase(), clean = id => id.replace(/[^a-z0-9._-]/g, "-");
+  if (cat.system === "polaris") {
+    const c = (u.searchParams.get("ctx") || "").toLowerCase();
+    return clean("polaris." + host + (/^[0-9.]+$/.test(c) ? "_" + c.replace(/\./g, "-") : ""));
+  }
+  if (cat.system === "enterprise") {
+    const segs = u.pathname.split("/").filter(Boolean), ci = segs.indexOf("client");
+    let profile = "default";
+    if (ci >= 0) {
+      const r = segs.slice(ci + 1);
+      if (r[0] === "rss" && r[1] === "hitlist" && r[2]) profile = r[2];
+      else if (/^[a-z]{2}_[A-Z]{2}$/.test(r[0] || "") && r[1]) profile = r[1];
+      else if (r[0] && !/^(assets|search|rss|ctx|custom|ws|css)$/i.test(r[0])) profile = r[0];
+    }
+    let p = profile; try { p = decodeURIComponent(profile); } catch {}
+    return clean(`enterprise.${host}_${p.replace(/[^A-Za-z0-9._-]/g, "-").toLowerCase()}`);
+  }
+  if (cat.system === "carl") return clean("carl." + host);
+  return "";
+}
+// The link the copier reads this library from.
+export const readerUrl = cat => cat?.system === "vega" ? `https://${cat.vega || cat.host}/` : cat?.url || "";
+// The catalog behind a reader id, for "Check at" and whole-catalog search links (a saved link is better: url).
+export function readerCatalog(lib, url) {
+  if (!isReaderLib(lib)) return null;
+  if (url) { const c = readCatalogLink(url, lib.split(".")[0]); if (c) return c; }
+  const sys = lib.split(".")[0], host = lib.slice(sys.length + 1).split("_")[0];
+  return readCatalogLink("https://" + host + "/", sys);
+}
+

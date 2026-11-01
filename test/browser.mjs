@@ -619,6 +619,62 @@ scenario("a library we cannot read yet: browse the nationwide shelf and check ti
   ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
 });
 
+scenario("a Vega catalog: not copied yet = popular shelf + one copy request, then its own shelf when the copy lands", async b => {
+  const ID = "vega.sdpl.na5.iiivega.com";
+  const rows = makeRows("v", 60).map((r, i) => { r[0] = `fg-${i}-uuid`; return r; });
+  const body = zlib.gzipSync(JSON.stringify({ ver: Date.now(), finished: Date.now(), total: rows.length, sc: "", rec: "https://sdpl.na5.iiivega.com/search/card?id={id}&entityType=FormatGroup", sys: "vega", rows }));
+  const W = world();
+  const { page } = await newPage(b, W);
+  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector("#pickInput", { visible: true });
+  await page.type("#pickInput", "https://sdpl.na5.iiivega.com/search?query=alien"); await page.evaluate(() => document.querySelector("#pickForm").requestSubmit());
+  await page.waitForSelector("#guestIntro[open]", { timeout: 8000 });
+  const intro = await page.$eval("#guestIntro", e => e.textContent.replace(/\s+/g, " "));
+  ok(/We're copying your library's shelves now/.test(intro) && /within the hour/.test(intro), `the pop-up says it's being copied: "${intro.slice(2, 70)}"`);
+  await waitCards(page, 12); await sleep(800);
+  ok(/popular movies/.test(await status(page)), "meanwhile: the popular shelf");
+  ok(W.wants.filter(w => w === ID).length === 1, `one copy request for ${ID} (${JSON.stringify(W.wants)})`);
+  ok(W.searchReqs.length === 0 && W.availReqs.length === 0, "no BiblioCommons live calls for a Vega library");
+  // the copy lands: the next visit moves the visitor onto the library's own shelf
+  W.snap[ID] = { body };
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await openSaved(page);
+  await page.waitForFunction(() => /titles/.test(document.querySelector("#status")?.textContent || ""), { timeout: 15000 });
+  await waitCards(page, 12);
+  ok(/\d+ titles/.test(await status(page)), `its own shelf: "${(await status(page)).slice(0, 40)}"`);
+  ok(await page.evaluate(() => JSON.parse(localStorage.getItem("nl")).lib) === ID, "the saved library is now the Vega library");
+  const libs = await page.evaluate(() => JSON.parse(localStorage.getItem("nl")).libs.map(e => e.lib));
+  ok(libs.filter(l => l === "shelf").length === 0 && libs.includes(ID), `the waiting entry was replaced, not duplicated (${libs})`);
+  await page.click("#filtBtn"); await sleep(200);
+  ok(!(await page.$("[data-coll]")), "no BiblioCommons-only collections in the filters");
+  await page.evaluate(() => document.querySelector("#filters").close()); await sleep(400);
+  await page.click("#grid .card .cover"); await sleep(400);
+  const hold = await page.$eval("#detailBody", e => [...e.querySelectorAll("a.btn")].find(a => /Place a hold|Get in line/.test(a.textContent))?.href);
+  ok(hold && hold.startsWith("https://sdpl.na5.iiivega.com/search/card?id=fg-"), `hold button opens the record at the library (${hold})`);
+  await sleep(500);
+  ok(W.searchReqs.length === 0 && W.availReqs.length === 0, `still no BiblioCommons live calls (${W.searchReqs.length}, ${W.availReqs.length})`);
+  await page.evaluate(() => document.querySelector("#detail").close()); await sleep(300);
+  await page.type("#q", "movie 3"); await sleep(600);
+  const sl = await page.$eval("#status a", a => a.href).catch(() => "");
+  ok(sl.startsWith("https://sdpl.na5.iiivega.com/search?query=movie%203"), `searching offers the library's own catalog (${sl})`);
+  // a shared link to the Vega library opens it directly
+  const { page: p2 } = await newPage(b, W);
+  await p2.goto(`https://${HOST}/?lib=${ID}`, { waitUntil: "domcontentloaded" });
+  await waitCards(p2, 12);
+  ok(/\d+ titles/.test(await status(p2)), "a shared ?lib= link opens the copied Vega library");
+  ok(page.errors.length === 0 && p2.errors.length === 0, `no page errors ${page.errors.concat(p2.errors).slice(0, 1)}`);
+  // a catalog that reports no shelf status (older LS2 PAC): no "all checked out" anywhere
+  const NA = "carl.lima.tlcdelivers.com", naRows = makeRows("n", 60).map(r => { r[6] = 0; return r; });
+  W.snap[NA] = { body: zlib.gzipSync(JSON.stringify({ ver: Date.now(), finished: Date.now(), total: 60, sc: "", rec: "https://lima.tlcdelivers.com/#section=resource&resourceid={id}", sys: "carl", na: 1, rows: naRows })) };
+  const { page: p3 } = await newPage(b, W);
+  await p3.goto(`https://${HOST}/?lib=${NA}`, { waitUntil: "domcontentloaded" });
+  await waitCards(p3, 12);
+  ok((await p3.$$("#grid .avail")).length === 0, "no shelf labels on cards when the catalog doesn't report them");
+  await p3.click("#grid .card .cover"); await sleep(400);
+  const t3 = await p3.$eval("#detailBody", e => e.textContent);
+  ok(!/All checked out|Get in line|Place a hold/.test(t3) && /See it at/.test(t3), "movie page: no shelf status, a plain 'See it at' link");
+});
+
 scenario("finding your library: paste any catalog link or website, no second paste", async b => {
   const W = world({ websites: { "spl.org": "seattle" }, libs: [["seattle", "The Seattle Public Library"], ["alpha", "Alpha Public Library"]], snap: { seattle: { body: snapBody(makeRows("seattle", 800)) } },
     pages: { "pottstownlibrary.org": `<title>Home | Pottstown Regional Public Library</title><a href="https://mclinc.polarislibrary.com/polaris/logon.aspx?ctx=1.1033.0.0.1">Catalog</a>`,

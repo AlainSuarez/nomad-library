@@ -5,7 +5,7 @@
 import { json, libraryInfo, SLUG_RE } from "../../lib/core.js";
 import { isReaderLib, READER_SYSTEMS, readerId, readCatalogLink } from "../../public/catalog.js";
 
-const MAX_WANTED = 600;   // a ceiling so nobody can queue the whole world
+const MAX_WANTED = 3000;  // a ceiling so nobody can queue the whole world (600 until 11.1.26, when ~430 Vega/Polaris/Enterprise/CARL libraries were queued)
 
 export async function onRequestGet({ env }) {
   const { results } = await env.DB.prepare("SELECT slug, name, wanted_at, url FROM libs WHERE wanted = 1 AND name IS NOT NULL ORDER BY wanted_at, slug").all();

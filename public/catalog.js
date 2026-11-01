@@ -13,7 +13,7 @@ const SYSTEMS = [
   ["evergreen", /\/eg2?\/opac|\/eg2\/|\.evergreen\./i],
   ["koha", /\/cgi-bin\/koha|koha/i],
   ["sierra", /\/search~S\d+|\/search\/[a-zX]\?|\/patroninfo|\/screens\/|webpac/i],
-  ["carl", /ls2pac|carlconnect|carl\.org|[?#&]section=(search|home)/i],
+  ["carl", /ls2pac\.|carlconnect|carl\.org|[a-z0-9-]+\.tlcdelivers\.com|[?#&]section=(search|home)/i],
   ["spydus", /spydus/i],
   ["apollo", /biblionix\.com/i],
   ["atriuum", /booksys\.net/i],
@@ -131,7 +131,7 @@ export function readerId(cat) {
     let p = profile; try { p = decodeURIComponent(profile); } catch {}
     return clean(`enterprise.${host}_${p.replace(/[^A-Za-z0-9._-]/g, "-").toLowerCase()}`);
   }
-  if (cat.system === "carl") return clean("carl." + host);
+  if (cat.system === "carl") return /^(www\.)?tlcdelivers\.com$/.test(host) ? "" : clean("carl." + host);   // tlcdelivers.com itself is the vendor's site
   return "";
 }
 // The link the copier reads this library from.

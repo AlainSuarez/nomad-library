@@ -41,3 +41,6 @@ CREATE TABLE IF NOT EXISTS catalogs (key TEXT PRIMARY KEY, url TEXT NOT NULL, sy
 -- emails people chose to give: kind 'library' = tell me when my library's shelves are ready (with that library's catalog link),
 -- kind 'updates' = new libraries and features (maybe a newsletter later). token = their one-click unsubscribe.
 CREATE TABLE IF NOT EXISTS emails (id INTEGER PRIMARY KEY, email TEXT NOT NULL, kind TEXT NOT NULL, lib_host TEXT NOT NULL DEFAULT '', lib_name TEXT, lib_url TEXT, system TEXT, token TEXT NOT NULL, created INTEGER NOT NULL, UNIQUE (email, kind, lib_host));
+-- feedback people send from the Feedback button (Chris 11.1.26). Read with tools/feedback.sh. ip_day = hash of address + day, only for the daily cap.
+CREATE TABLE IF NOT EXISTS feedback (id INTEGER PRIMARY KEY, created INTEGER NOT NULL, message TEXT NOT NULL, email TEXT, lib TEXT, page TEXT, device TEXT, uid TEXT, ip_day TEXT, status TEXT NOT NULL DEFAULT 'new', note TEXT);
+CREATE INDEX IF NOT EXISTS feedback_ip_day ON feedback (ip_day);

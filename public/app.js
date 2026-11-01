@@ -1374,6 +1374,32 @@ $("#libBtn").onclick = () => { showHome(); $("#pickInput").focus(); };
 $("#home").onclick = e => { e.preventDefault(); showHome(); };
 $("#resume").onclick = () => boot();
 $("#acctBtn").onclick = openAccount;
+// ---- feedback (Chris 11.1.26): saved to D1 `feedback`, read with tools/feedback.sh --------------------------------
+function openFeedback() {
+  acctView(`<h2>Send feedback</h2>
+    <p>Something broken, confusing or missing? Tell us.</p>
+    <form class="fb-form" id="fbForm" novalidate><div class="stack">
+      <textarea name="message" maxlength="4000" required aria-label="Your feedback"></textarea>
+      <input type="email" name="email" autocomplete="email" placeholder="Your email, if you'd like a reply" aria-label="Your email, if you'd like a reply">
+      <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <p class="err" role="status" aria-live="polite"></p>
+      <button class="btn" type="submit">Send</button>
+    </div></form>`);
+  if (!$("#account").open) $("#account").showModal();
+  const f = $("#fbForm"); f.message.focus();
+  f.onsubmit = async e => {
+    e.preventDefault();
+    const msg = f.querySelector(".err"), btn = f.querySelector("button[type=submit]");
+    if (f.message.value.trim().length < 3) { msg.textContent = "Write a few words first."; return; }
+    btn.disabled = true; msg.textContent = "Sending…";
+    try {
+      await api("/api/feedback", { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: f.message.value, email: f.email.value, website: f.website.value, lib: S.libName || S.lib || "", page: $("#pick")?.hidden ? "shelf" : "home" }) });
+      acctView(`<h2>Thanks</h2><p>We read every message.</p><button class="btn" data-close style="width:100%">Done</button>`);
+    } catch (err) { msg.textContent = err.message; btn.disabled = false; }
+  };
+}
+$("#fbBtn").onclick = openFeedback;
 document.addEventListener("click", e => {
   const o = e.target.closest("[data-open]"); if (o) { const r = rowsById.get(o.dataset.open); if (r) openDetail(r); return; }
   const f = e.target.closest("[data-fav]"); if (f) { toggleFav(f.dataset.fav); return; }

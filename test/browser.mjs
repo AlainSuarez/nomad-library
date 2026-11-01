@@ -108,7 +108,7 @@ async function newPage(browser, W, { ctx, seedState, idbBroken, viewport, askEma
   await page.evaluateOnNewDocument((seed, broken, askEmail) => {
     if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {});
     if (seed && !localStorage.getItem("nl")) localStorage.setItem("nl", JSON.stringify(seed));
-    if (!askEmail) localStorage.setItem("nl-email-asked", "1"); else window.__nlAskMs = 1500;   // the one-time updates prompt stays out of other tests
+    if (!askEmail) { localStorage.setItem("nl-email-asked", "1"); localStorage.setItem("nl-updates-done", "1"); } else window.__nlAskMs = 1500;   // the one-time updates prompt stays out of other tests
     if (broken) Object.defineProperty(window, "indexedDB", { get() { throw new Error("storage blocked"); } });
   }, seedState || null, !!idbBroken, !!askEmail);
   page.errors = [];

@@ -1224,6 +1224,7 @@ document.addEventListener("submit", async e => {
     await send(kind);
     if (kind === "library" && f.updates?.checked) await send("updates");
     emailAsked();
+    if (kind === "updates" || f.updates?.checked) updatesDone();
     msg.classList.add("ok");
     msg.textContent = kind === "library" ? `Thanks. We'll email you when ${S.libName ? S.libName + "'s" : "your library's"} shelves are ready.` : "Thanks. You're on the list.";
     f.querySelector(".row").hidden = true; f.querySelector(".check")?.remove();
@@ -1233,7 +1234,7 @@ document.addEventListener("submit", async e => {
 // The updates sign-up is one small card in the lower right. It shows by itself once per device, a little while
 // into the first visit (home page or shelf), and the footer's "Get updates" link brings it back.
 function showUpdatesCard() {
-  emailAsked();
+  updShown = true;
   if ($("#updToast")) return $("#updToast");
   const card = Object.assign(document.createElement("div"), { id: "updToast", className: "copy-toast upd-toast" });
   card.setAttribute("role", "dialog"); card.setAttribute("aria-label", "Get updates");
@@ -1246,18 +1247,21 @@ function showUpdatesCard() {
   return card;
 }
 $("#updatesFoot").onclick = () => showUpdatesCard().querySelector("input[type=email]")?.focus();
-// The first-visit card waits while a pop-up is open, the filling-in card is showing, or someone is typing in the library box.
-let updAskTimer = null;
+// Chris 11.1.26: the card shows on EVERY visit (once per page load, a few seconds in) until this device signs up for
+// updates; closing it only hides it for this visit. It waits while a pop-up is open, the filling-in card is showing,
+// or someone is typing in the library box.
+let updAskTimer = null, updShown = false;
+const updatesDone = () => { try { localStorage.setItem("nl-updates-done", "1"); } catch {} };
+const isUpdatesDone = () => { try { return !!localStorage.getItem("nl-updates-done"); } catch { return false; } };
 function maybeAskUpdates() {
-  if (updAskTimer) return;
-  try { if (localStorage.getItem("nl-email-asked")) return; } catch { return; }
+  if (updAskTimer || updShown || isUpdatesDone()) return;
   updAskTimer = setTimeout(() => {
     updAskTimer = null;
     const busy = document.querySelector("dialog[open]") || $("#copyToast") || (document.activeElement?.id === "pickInput" && $("#pickInput").value);
     if (busy) return maybeAskUpdates();
-    try { if (localStorage.getItem("nl-email-asked")) return; } catch { return; }
+    if (updShown || isUpdatesDone()) return;
     showUpdatesCard();
-  }, window.__nlAskMs || 12000);
+  }, window.__nlAskMs || 4000);
 }
 let websiteOnly = null;     // a library website with no catalog we could find: "Browse movies anyway" still works
 function openOther(d) {

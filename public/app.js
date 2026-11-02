@@ -15,8 +15,9 @@ const store = {
   set(v) { try { localStorage.setItem("nl", JSON.stringify(v)); } catch {} },
 };
 let S = Object.assign({ lib: null, libName: "", fmt: "all", shelf: "all", sort: "", onShelf: false, faves: {}, watch: null,
-  genres: [], coll: "", plat: "", y0: 0, y1: 0, minR: 0 }, store.get());
+  genres: [], ages: [], coll: "", plat: "", y0: 0, y1: 0, minR: 0 }, store.get());
 if (!Array.isArray(S.genres)) S.genres = [];
+if (!Array.isArray(S.ages)) S.ages = [];
 if ("genre" in S) {                       // saved before genres could be combined
   if (S.genre && !S.genres.length) S.genres = [S.genre];
   delete S.genre; store.set(S);
@@ -344,7 +345,7 @@ function visible(rows) {
     if (S.fmt === "games") return !S.plat || r.plat === S.plat;
     const year = r.fy || r.disc;
     return (!S.y0 || year >= S.y0) && (!S.y1 || (year && year <= S.y1)) &&
-      (!S.minR || (r.r >= S.minR && r.v >= 500));
+      (!S.minR || (r.r >= S.minR && r.v >= 500)) && ageMatch(r);
   });
 }
 
@@ -368,7 +369,8 @@ async function liveMore(my = run, fillPages = 0) {
     if (my !== run) return;
     page = d.page; pages = d.pages;
     remember(d.rows);
-    if (S.fmt !== "games" && (S.minR || S.y0 || S.y1)) {
+    if (S.fmt !== "games" && (S.minR || S.y0 || S.y1 || S.ages.length)) {
+      if (S.ages.length) await loadMpaa();
       await rate(d.rows);
       if (my !== run) return;
     }
@@ -385,7 +387,7 @@ async function liveMore(my = run, fillPages = 0) {
         card.outerHTML = cardHTML(r);
       }
     });
-    const localFilters = S.onShelf || S.plat || S.minR || S.y0 || S.y1;
+    const localFilters = S.onShelf || S.plat || S.minR || S.y0 || S.y1 || S.ages.length;
     $("#status").innerHTML = esc(d.total ? (localFilters ? `${$("#grid").children.length.toLocaleString()} matches loaded · ${d.total.toLocaleString()} catalog results` : `${d.total.toLocaleString()} titles`) : "Nothing here at this library.") + liveNote();
     paintCopyToast();
     $("#more").textContent = page < pages ? "Loading more…" : (d.total ? "That's the whole shelf." : "");
@@ -448,6 +450,69 @@ function genreMatch(r) {
   const wide = S.genres.filter(g => !NARROW.has(g));
   return S.genres.every(g => !NARROW.has(g) || r.genres.includes(g)) && (!wide.length || wide.some(g => r.genres.includes(g)));
 }
+// ---- search: titles, genres, actors and directors -------------------------------
+// Typed genre words match the genre ("horror", "scary movies", "kids"). Names match through ix/people/<xx>.json:
+// every name is filed under the first 2 letters of each of its words, with the IMDb ids of the films it's in.
+const GENRE_WORDS = { horror: "horror", scary: "horror", comedy: "comedy", comedies: "comedy", funny: "comedy", romcom: "romcom",
+  scifi: "scifi", action: "action", thriller: "thriller", thrillers: "thriller", suspense: "thriller", crime: "crime", drama: "drama",
+  dramas: "drama", animation: "animation", animated: "animation", cartoon: "animation", cartoons: "animation", anime: "animation",
+  family: "family", kids: "family", fantasy: "fantasy", romance: "romance", romantic: "romance", documentary: "documentary",
+  documentaries: "documentary", foreign: "foreign", western: "western", westerns: "western", war: "war", musical: "musical",
+  musicals: "musical", superhero: "superhero", superheroes: "superhero", biography: "biography", biopic: "biography", biopics: "biography",
+  history: "history", historical: "history", sports: "sports", sport: "sports", tv: "tv" };
+const STOP = new Set(["the", "a", "an", "and", "of", "in", "on", "to", "with", "for", "movie", "movies", "film", "films", "show", "shows"]);
+const queryWords = text => norm(String(text || "").replace(/science fiction|sci[\s-]+fi/gi, "scifi").replace(/rom[\s-]+com/gi, "romcom"))
+  .split(" ").filter(Boolean);
+const imdbNum = r => (r.imdb ? +String(r.imdb).replace(/\D+/g, "") : 0);
+const peopleShards = new Map(), peopleWords = new Map();
+function peopleShard(k) {
+  if (!peopleShards.has(k)) peopleShards.set(k, fetch(`/ix/people/${encodeURIComponent(k)}.json`)
+    .then(r => r.ok && /json/.test(r.headers.get("content-type") || "") ? r.json() : {}).catch(() => ({})));
+  return peopleShards.get(k);
+}
+// Films of everyone whose name has a word starting with w ("spiel" finds Steven Spielberg).
+async function peopleFor(w) {
+  if (peopleWords.has(w)) return peopleWords.get(w);
+  const d = await peopleShard(w.slice(0, 2)), films = new Set();
+  for (const name in d) if ((" " + name).includes(" " + w)) for (const t of d[name]) films.add(t);
+  peopleWords.set(w, films);
+  return films;
+}
+const nameWord = w => w.length >= 2 && !STOP.has(w) && !GENRE_WORDS[w];
+let QP = { q: "", sets: new Map() };
+// Loads the name files the current search needs, before the shelf filters by it.
+async function prepQuery() {
+  const q = $("#q").value.trim();
+  if (QP.q === q) return;
+  const sets = new Map();
+  await Promise.all(queryWords(q).filter(nameWord).map(async w => sets.set(w, await peopleFor(w))));
+  QP = { q, sets };
+}
+function queryMatch(r, words) {
+  const t = norm(r.title + " " + r.sub);
+  if (words.every(w => t.includes(w))) return true;
+  const n = imdbNum(r), g = r.genres || [];
+  let named = false;
+  for (const w of words) {
+    if (t.includes(w) || (GENRE_WORDS[w] && g.includes(GENRE_WORDS[w]))) continue;
+    const set = QP.sets.get(w);
+    if (set && n && set.has(n)) { named = true; continue; }
+    if (!nameWord(w)) continue;      // "the", "of": only ever needed for titles
+    return false;
+  }
+  return named || words.some(w => GENRE_WORDS[w] && g.includes(GENRE_WORDS[w]));
+}
+
+// ---- age ratings (US): ix/mpaa.json, IMDb id digits -> G / PG / PG-13 / R / NC-17 ------------------
+const AGES = ["G", "PG", "PG-13", "R", "NC-17"];
+let MPAA = null, mpaaLoading = null;
+function loadMpaa() {
+  return mpaaLoading ||= fetch("/ix/mpaa.json").then(r => r.ok ? r.json() : {}).catch(() => ({})).then(d => (MPAA = d));
+}
+const ageOf = r => (MPAA && r.imdb ? MPAA[imdbNum(r)] || "" : "");
+const ageMatch = r => !S.ages.length || S.ages.includes(ageOf(r));
+async function prepFilters() { await Promise.all([prepQuery(), S.ages.length ? loadMpaa() : null]); }
+
 const COLLECTIONS = [["mustsee", "1001 must-sees"], ["oscar", "Oscar winners"], ["registry", "Film Registry"], ["criterion", "Criterion"], ["ghibli", "Studio Ghibli"]];
 const FMT_NAME = { b: "Blu-ray", d: "DVD", g: "Game" };
 const YEAR_MIN = 1920, YEAR_MAX = new Date().getFullYear();
@@ -723,8 +788,7 @@ async function checkPendingCopy() {
 setInterval(checkPendingCopy, 120000);
 
 function snapFilter() {
-  const q = norm($("#q").value);
-  const words = q ? q.split(" ") : [];
+  const words = queryWords($("#q").value);
   let L = S.fmt === "games" ? SNAP.games : SNAP.films;
   const want = S.fmt === "br" ? "b" : S.fmt === "dvd" ? "d" : "";
   return L.filter(r => {
@@ -736,7 +800,8 @@ function snapFilter() {
     if (S.y0 && (!y || y < S.y0)) return false;
     if (S.y1 && (!y || y > S.y1)) return false;
     if (S.minR && !(r.r >= S.minR && r.v >= 500)) return false;
-    if (words.length) { const t = norm(r.title + " " + r.sub); if (!words.every(w => t.includes(w))) return false; }
+    if (S.ages.length && S.fmt !== "games" && !ageMatch(r)) return false;
+    if (words.length && !queryMatch(r, words)) return false;
     return true;
   });
 }
@@ -796,7 +861,12 @@ async function reload() {
     if (S.lib !== lib) return;      // switched libraries while waiting: the newer reload owns the screen
   }
   paintCopyToast();
-  if (instant()) return snapRender();
+  if (instant()) {
+    const q = $("#q").value;
+    await prepFilters();
+    if (S.lib !== lib || $("#q").value !== q) return;   // typed again while the name files loaded: the newer reload paints
+    return snapRender();
+  }
   // live mode: while no copy is ready, for collections, and for whole-catalog searches
   // the live catalog takes one shelf at a time: the first picked genre that widens, else the first one
   const g = S.genres.find(x => !NARROW.has(x)) || S.genres[0];
@@ -806,12 +876,13 @@ async function reload() {
 
 // ---- filters ---------------------------------------------------------------------
 
-const activeCount = () => S.genres.length + [S.coll, S.plat, S.y0 || S.y1, S.minR, S.onShelf].filter(Boolean).length;
+const activeCount = () => S.genres.length + (S.fmt === "games" ? 0 : S.ages.length) + [S.coll, S.plat, S.y0 || S.y1, S.minR, S.onShelf].filter(Boolean).length;
 
 function paintActive() {
   const bits = [];
   const c = COLLECTIONS.find(x => x[0] === S.coll);
   if (S.fmt !== "games") for (const [k, l] of GENRES) if (S.genres.includes(k)) bits.push(["genre:" + k, l]);
+  if (S.fmt !== "games") for (const a of S.ages) bits.push(["age:" + a, "Rated " + a]);
   if (c) bits.push(["coll", c[1]]);
   if (S.fmt === "games" && S.plat) bits.push(["plat", S.plat]);
   if (S.y0 || S.y1) bits.push(["years", `${S.y0 || YEAR_MIN} to ${S.y1 || YEAR_MAX}`]);
@@ -826,6 +897,8 @@ function paintActive() {
 function clearFilter(k) {
   if (k === "all" || k === "genre") S.genres = [];
   if (k.startsWith("genre:")) S.genres = S.genres.filter(g => g !== k.slice(6));
+  if (k === "all") S.ages = [];
+  if (k.startsWith("age:")) S.ages = S.ages.filter(a => a !== k.slice(4));
   if (k === "all" || k === "coll") S.coll = "";
   if (k === "all" || k === "plat") S.plat = "";
   if (k === "all" || k === "years") { S.y0 = 0; S.y1 = 0; }
@@ -853,6 +926,8 @@ function openFilters() {
       <label>From <output id="y0o">${S.y0 || YEAR_MIN}</output><input type="range" id="y0" min="${YEAR_MIN}" max="${YEAR_MAX}" value="${S.y0 || YEAR_MIN}"></label>
       <label>To <output id="y1o">${S.y1 || YEAR_MAX}</output><input type="range" id="y1" min="${YEAR_MIN}" max="${YEAR_MAX}" value="${S.y1 || YEAR_MAX}"></label>
     </div>
+    ${games ? "" : `<h3>Age rating</h3><div class="chipgrid">${AGES.map(a => chip("data-age", a, a, S.ages.includes(a))).join("")}</div>
+    ${S.ages.length ? `<p class="dim filt-note">Only movies with a known US rating show up.</p>` : ""}`}
     ${games ? "" : `<h3>Rating</h3>
     <label class="range1">At least <output id="mro">${S.minR ? "★ " + S.minR : "any"}</output><input type="range" id="minR" min="0" max="9" step="0.5" value="${S.minR}"></label>`}
     ${noAvail() ? "" : `<label class="toggle big"><input type="checkbox" id="onShelfF" ${S.onShelf ? "checked" : ""}> On the shelf now</label>`}
@@ -871,8 +946,13 @@ function filtChanged(rerender = true) {
 }
 
 $("#filtBody").addEventListener("click", e => {
-  const g = e.target.closest("[data-genre]"), c = e.target.closest("[data-coll]"), p = e.target.closest("[data-plat]");
-  if (g) {
+  const g = e.target.closest("[data-genre]"), c = e.target.closest("[data-coll]"), p = e.target.closest("[data-plat]"), a = e.target.closest("[data-age]");
+  if (a) {
+    const k = a.dataset.age;
+    S.ages = S.ages.includes(k) ? S.ages.filter(x => x !== k) : [...S.ages, k];
+    loadMpaa().then(() => filtChanged());
+  }
+  else if (g) {
     const k = g.dataset.genre;
     S.genres = !k ? [] : S.genres.includes(k) ? S.genres.filter(x => x !== k) : [...S.genres, k];
     S.coll = ""; filtChanged();

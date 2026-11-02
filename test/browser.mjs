@@ -306,6 +306,62 @@ scenario("genres combine: picked genres widen, Foreign and TV narrow, with the y
   ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
 });
 
+scenario("search finds actors, directors and genres; age ratings filter (R + PG-13 together)", async b => {
+  const real = realRows("chipublib");
+  if (!real) { ok(true, "skipped: needs FIXTURE_DIR with chipublib.json.gz (real IMDb ids)"); return; }
+  const rows = real.rows;
+  const W = world({ snap: { chipublib: { body: snapBody(rows) } } });
+  const { page } = await newPage(b, W);
+  await page.goto(`https://${HOST}/`, { waitUntil: "domcontentloaded" });
+  await pickLibrary(page, "chipublib");
+  await waitCards(page, 12);
+  await page.waitForFunction(() => /\d[\d,]* titles/.test(document.querySelector("#status").textContent), { timeout: 20000 });
+  const count = async () => { const m = (await status(page)).match(/([\d,]+) titles/); return m ? +m[1].replace(/,/g, "") : -1; };
+  const titles = () => page.$$eval("#grid .ttl", e => e.map(x => x.firstChild.textContent));
+  const search = async q => { await page.$eval("#q", e => { e.value = ""; }); await page.type("#q", q); await sleep(1200); };
+  // expected answers straight from the data files, without the app's code
+  const films = oneCardPerFilm(rows), num = r => r[13] ? +String(r[13]).replace(/\D+/g, "") : 0;
+  const people = k => JSON.parse(fs.readFileSync(path.join(PUBLIC, "ix/people", k + ".json"), "utf8"));
+  const spielberg = new Set(people("sp")["steven spielberg"]);
+  const want = films.filter(r => spielberg.has(num(r))).length;
+  await search("spielberg");
+  ok(want > 3 && (await count()) >= want, `"spielberg" finds his films (${await count()} shown, ${want} directed or acted in by him)`);
+  await search("steven spielberg");
+  const t2 = await titles();
+  ok(t2.length > 3 && t2.some(t => /jaws|jurassic|raiders|e\.t\./i.test(t)), `"steven spielberg" shows his films (${t2.slice(0, 4).join(" | ")})`);
+  const hanks = new Set(people("ha")["tom hanks"]);
+  await search("tom hanks");
+  try { await page.screenshot({ path: path.join(os.tmpdir(), "nl-search-tom-hanks.png") }); } catch {}
+  const nh = await count(), wantH = films.filter(r => hanks.has(num(r))).length;
+  ok(wantH > 3 && nh >= wantH && nh < wantH * 2, `"tom hanks" finds his films (${nh} shown, ${wantH} with him)`);
+  await search("horror");
+  const nHorror = films.filter(r => (r[8] || "").split(",").includes("horror")).length;
+  ok((await count()) >= nHorror && nHorror > 50, `typing "horror" finds the horror genre (${await count()} shown, ${nHorror} tagged horror)`);
+  await search("godfather");
+  const wantG = films.filter(r => /godfather/i.test(r[1] + " " + r[2])).length;
+  ok((await count()) === wantG, `"godfather" still finds titles only (${await count()} shown, ${wantG} titles or subtitles say Godfather)`);
+  await search("zzzunlikely");
+  ok((await count()) === 0, "nonsense still finds nothing");
+  await page.$eval("#q", e => { e.value = ""; e.dispatchEvent(new Event("input", { bubbles: true })); }); await sleep(600);
+  // age ratings: R and PG-13 picked together
+  const mpaa = JSON.parse(fs.readFileSync(path.join(PUBLIC, "ix/mpaa.json"), "utf8"));
+  const wantA = films.filter(r => ["R", "PG-13"].includes(mpaa[num(r)])).length;
+  await page.click("#filtBtn"); await sleep(150);
+  await page.click('#filtBody [data-age="R"]'); await sleep(400);
+  await page.click('#filtBody [data-age="PG-13"]'); await sleep(400);
+  try { await page.screenshot({ path: path.join(os.tmpdir(), "nl-age-filter.png") }); } catch {}
+  const pressed = await page.$$eval('#filtBody [data-age][aria-pressed="true"]', e => e.map(x => x.dataset.age));
+  ok(pressed.sort().join() === "PG-13,R", `R and PG-13 stay picked together (${pressed})`);
+  await page.evaluate(() => document.querySelector("#filters").close()); await sleep(500);
+  ok((await count()) === wantA && wantA > 100, `only R and PG-13 movies show (${await count()} shown, ${wantA} expected)`);
+  const tags = await page.$$eval("#active .tag", e => e.map(x => x.firstChild.textContent.trim()));
+  ok(tags.join("|") === "Rated R|Rated PG-13", `one chip per rating (${tags.join("|")})`);
+  await page.click('#active [data-clear="age:R"]'); await sleep(500);
+  ok((await count()) === films.filter(r => mpaa[num(r)] === "PG-13").length, "removing the R chip leaves PG-13 only");
+  await page.click('#active [data-clear="age:PG-13"]'); await sleep(500);
+  ok((await count()) === films.length, `no rating picked: the whole shelf again (${await count()})`);
+});
+
 scenario("a genre saved before genres could combine still opens as that one genre", async b => {
   const real = realRows("chipublib");
   const rows = real ? real.rows : makeRows("chipublib", 6000);

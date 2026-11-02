@@ -306,7 +306,7 @@ scenario("genres combine: picked genres widen, Foreign and TV narrow, with the y
   ok(page.errors.length === 0, `no page errors ${page.errors.slice(0, 1)}`);
 });
 
-scenario("search finds actors, directors and genres; age ratings filter (R + PG-13 together)", async b => {
+scenario("search finds actors, directors and genres", async b => {
   const real = realRows("chipublib");
   if (!real) { ok(true, "skipped: needs FIXTURE_DIR with chipublib.json.gz (real IMDb ids)"); return; }
   const rows = real.rows;
@@ -342,24 +342,6 @@ scenario("search finds actors, directors and genres; age ratings filter (R + PG-
   ok((await count()) === wantG, `"godfather" still finds titles only (${await count()} shown, ${wantG} titles or subtitles say Godfather)`);
   await search("zzzunlikely");
   ok((await count()) === 0, "nonsense still finds nothing");
-  await page.$eval("#q", e => { e.value = ""; e.dispatchEvent(new Event("input", { bubbles: true })); }); await sleep(600);
-  // age ratings: R and PG-13 picked together
-  const mpaa = JSON.parse(fs.readFileSync(path.join(PUBLIC, "ix/mpaa.json"), "utf8"));
-  const wantA = films.filter(r => ["R", "PG-13"].includes(mpaa[num(r)])).length;
-  await page.click("#filtBtn"); await sleep(150);
-  await page.click('#filtBody [data-age="R"]'); await sleep(400);
-  await page.click('#filtBody [data-age="PG-13"]'); await sleep(400);
-  try { await page.screenshot({ path: path.join(os.tmpdir(), "nl-age-filter.png") }); } catch {}
-  const pressed = await page.$$eval('#filtBody [data-age][aria-pressed="true"]', e => e.map(x => x.dataset.age));
-  ok(pressed.sort().join() === "PG-13,R", `R and PG-13 stay picked together (${pressed})`);
-  await page.evaluate(() => document.querySelector("#filters").close()); await sleep(500);
-  ok((await count()) === wantA && wantA > 100, `only R and PG-13 movies show (${await count()} shown, ${wantA} expected)`);
-  const tags = await page.$$eval("#active .tag", e => e.map(x => x.firstChild.textContent.trim()));
-  ok(tags.join("|") === "Rated R|Rated PG-13", `one chip per rating (${tags.join("|")})`);
-  await page.click('#active [data-clear="age:R"]'); await sleep(500);
-  ok((await count()) === films.filter(r => mpaa[num(r)] === "PG-13").length, "removing the R chip leaves PG-13 only");
-  await page.click('#active [data-clear="age:PG-13"]'); await sleep(500);
-  ok((await count()) === films.length, `no rating picked: the whole shelf again (${await count()})`);
 });
 
 scenario("a genre saved before genres could combine still opens as that one genre", async b => {

@@ -15,9 +15,9 @@ const store = {
   set(v) { try { localStorage.setItem("nl", JSON.stringify(v)); } catch {} },
 };
 let S = Object.assign({ lib: null, libName: "", fmt: "all", shelf: "all", sort: "", onShelf: false, faves: {}, watch: null,
-  genres: [], ages: [], coll: "", plat: "", y0: 0, y1: 0, minR: 0 }, store.get());
+  genres: [], coll: "", plat: "", y0: 0, y1: 0, minR: 0 }, store.get());
 if (!Array.isArray(S.genres)) S.genres = [];
-if (!Array.isArray(S.ages)) S.ages = [];
+delete S.ages;                            // the age-rating filter (11.1.26) was taken back out
 if ("genre" in S) {                       // saved before genres could be combined
   if (S.genre && !S.genres.length) S.genres = [S.genre];
   delete S.genre; store.set(S);
@@ -345,7 +345,7 @@ function visible(rows) {
     if (S.fmt === "games") return !S.plat || r.plat === S.plat;
     const year = r.fy || r.disc;
     return (!S.y0 || year >= S.y0) && (!S.y1 || (year && year <= S.y1)) &&
-      (!S.minR || (r.r >= S.minR && r.v >= 500)) && ageMatch(r);
+      (!S.minR || (r.r >= S.minR && r.v >= 500));
   });
 }
 
@@ -369,8 +369,7 @@ async function liveMore(my = run, fillPages = 0) {
     if (my !== run) return;
     page = d.page; pages = d.pages;
     remember(d.rows);
-    if (S.fmt !== "games" && (S.minR || S.y0 || S.y1 || S.ages.length)) {
-      if (S.ages.length) await loadMpaa();
+    if (S.fmt !== "games" && (S.minR || S.y0 || S.y1)) {
       await rate(d.rows);
       if (my !== run) return;
     }
@@ -387,7 +386,7 @@ async function liveMore(my = run, fillPages = 0) {
         card.outerHTML = cardHTML(r);
       }
     });
-    const localFilters = S.onShelf || S.plat || S.minR || S.y0 || S.y1 || S.ages.length;
+    const localFilters = S.onShelf || S.plat || S.minR || S.y0 || S.y1;
     $("#status").innerHTML = esc(d.total ? (localFilters ? `${$("#grid").children.length.toLocaleString()} matches loaded · ${d.total.toLocaleString()} catalog results` : `${d.total.toLocaleString()} titles`) : "Nothing here at this library.") + liveNote();
     paintCopyToast();
     $("#more").textContent = page < pages ? "Loading more…" : (d.total ? "That's the whole shelf." : "");
@@ -502,16 +501,6 @@ function queryMatch(r, words) {
   }
   return named || words.some(w => GENRE_WORDS[w] && g.includes(GENRE_WORDS[w]));
 }
-
-// ---- age ratings (US): ix/mpaa.json, IMDb id digits -> G / PG / PG-13 / R / NC-17 ------------------
-const AGES = ["G", "PG", "PG-13", "R", "NC-17"];
-let MPAA = null, mpaaLoading = null;
-function loadMpaa() {
-  return mpaaLoading ||= fetch("/ix/mpaa.json").then(r => r.ok ? r.json() : {}).catch(() => ({})).then(d => (MPAA = d));
-}
-const ageOf = r => (MPAA && r.imdb ? MPAA[imdbNum(r)] || "" : "");
-const ageMatch = r => !S.ages.length || S.ages.includes(ageOf(r));
-async function prepFilters() { await Promise.all([prepQuery(), S.ages.length ? loadMpaa() : null]); }
 
 const COLLECTIONS = [["mustsee", "1001 must-sees"], ["oscar", "Oscar winners"], ["registry", "Film Registry"], ["criterion", "Criterion"], ["ghibli", "Studio Ghibli"]];
 const FMT_NAME = { b: "Blu-ray", d: "DVD", g: "Game" };
@@ -800,7 +789,6 @@ function snapFilter() {
     if (S.y0 && (!y || y < S.y0)) return false;
     if (S.y1 && (!y || y > S.y1)) return false;
     if (S.minR && !(r.r >= S.minR && r.v >= 500)) return false;
-    if (S.ages.length && S.fmt !== "games" && !ageMatch(r)) return false;
     if (words.length && !queryMatch(r, words)) return false;
     return true;
   });
@@ -863,7 +851,7 @@ async function reload() {
   paintCopyToast();
   if (instant()) {
     const q = $("#q").value;
-    await prepFilters();
+    await prepQuery();
     if (S.lib !== lib || $("#q").value !== q) return;   // typed again while the name files loaded: the newer reload paints
     return snapRender();
   }
@@ -876,13 +864,12 @@ async function reload() {
 
 // ---- filters ---------------------------------------------------------------------
 
-const activeCount = () => S.genres.length + (S.fmt === "games" ? 0 : S.ages.length) + [S.coll, S.plat, S.y0 || S.y1, S.minR, S.onShelf].filter(Boolean).length;
+const activeCount = () => S.genres.length + [S.coll, S.plat, S.y0 || S.y1, S.minR, S.onShelf].filter(Boolean).length;
 
 function paintActive() {
   const bits = [];
   const c = COLLECTIONS.find(x => x[0] === S.coll);
   if (S.fmt !== "games") for (const [k, l] of GENRES) if (S.genres.includes(k)) bits.push(["genre:" + k, l]);
-  if (S.fmt !== "games") for (const a of S.ages) bits.push(["age:" + a, "Rated " + a]);
   if (c) bits.push(["coll", c[1]]);
   if (S.fmt === "games" && S.plat) bits.push(["plat", S.plat]);
   if (S.y0 || S.y1) bits.push(["years", `${S.y0 || YEAR_MIN} to ${S.y1 || YEAR_MAX}`]);
@@ -897,8 +884,6 @@ function paintActive() {
 function clearFilter(k) {
   if (k === "all" || k === "genre") S.genres = [];
   if (k.startsWith("genre:")) S.genres = S.genres.filter(g => g !== k.slice(6));
-  if (k === "all") S.ages = [];
-  if (k.startsWith("age:")) S.ages = S.ages.filter(a => a !== k.slice(4));
   if (k === "all" || k === "coll") S.coll = "";
   if (k === "all" || k === "plat") S.plat = "";
   if (k === "all" || k === "years") { S.y0 = 0; S.y1 = 0; }
@@ -926,8 +911,6 @@ function openFilters() {
       <label>From <output id="y0o">${S.y0 || YEAR_MIN}</output><input type="range" id="y0" min="${YEAR_MIN}" max="${YEAR_MAX}" value="${S.y0 || YEAR_MIN}"></label>
       <label>To <output id="y1o">${S.y1 || YEAR_MAX}</output><input type="range" id="y1" min="${YEAR_MIN}" max="${YEAR_MAX}" value="${S.y1 || YEAR_MAX}"></label>
     </div>
-    ${games ? "" : `<h3>Age rating</h3><div class="chipgrid">${AGES.map(a => chip("data-age", a, a, S.ages.includes(a))).join("")}</div>
-    ${S.ages.length ? `<p class="dim filt-note">Only movies with a known US rating show up.</p>` : ""}`}
     ${games ? "" : `<h3>Rating</h3>
     <label class="range1">At least <output id="mro">${S.minR ? "★ " + S.minR : "any"}</output><input type="range" id="minR" min="0" max="9" step="0.5" value="${S.minR}"></label>`}
     ${noAvail() ? "" : `<label class="toggle big"><input type="checkbox" id="onShelfF" ${S.onShelf ? "checked" : ""}> On the shelf now</label>`}
@@ -946,13 +929,8 @@ function filtChanged(rerender = true) {
 }
 
 $("#filtBody").addEventListener("click", e => {
-  const g = e.target.closest("[data-genre]"), c = e.target.closest("[data-coll]"), p = e.target.closest("[data-plat]"), a = e.target.closest("[data-age]");
-  if (a) {
-    const k = a.dataset.age;
-    S.ages = S.ages.includes(k) ? S.ages.filter(x => x !== k) : [...S.ages, k];
-    loadMpaa().then(() => filtChanged());
-  }
-  else if (g) {
+  const g = e.target.closest("[data-genre]"), c = e.target.closest("[data-coll]"), p = e.target.closest("[data-plat]");
+  if (g) {
     const k = g.dataset.genre;
     S.genres = !k ? [] : S.genres.includes(k) ? S.genres.filter(x => x !== k) : [...S.genres, k];
     S.coll = ""; filtChanged();

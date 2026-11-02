@@ -316,4 +316,3 @@ img { max-width: 100%; }
 .upd-toast .err:empty { display: none; }
 @keyframes updIn { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (max-width: 640px) { .upd-toast { width: auto; } }
-.filt-body .filt-note { font-size: 13px; margin: 8px 0 0; }

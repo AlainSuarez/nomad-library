@@ -1,5 +1,5 @@
 // Which libraries visitors have asked to have copied. The copier on GitHub (nomad-library-data) reads this list.
-//   GET  /api/want              -> { wanted: [[slug, name, askedAt, url], ...] }  oldest request first (url: catalog link, readers only)
+//   GET  /api/want  (x-want-key) -> { wanted: [[slug, name, askedAt, url], ...] }  oldest request first (url: catalog link, readers only)
 //   POST /api/want  {lib}       -> { ok: true }  marks one library wanted (idempotent, one atomic statement)
 // The seeded libraries stay unwanted until a visitor actually opens one that has no copy yet.
 import { json, libraryInfo, SLUG_RE } from "../../lib/core.js";
@@ -7,10 +7,15 @@ import { isReaderLib, READER_SYSTEMS, readerId, readCatalogLink } from "../../pu
 
 const MAX_WANTED = 3000;  // a ceiling so nobody can queue the whole world (600 until 11.1.26, when ~430 Vega/Polaris/Enterprise/CARL libraries were queued)
 
-export async function onRequestGet({ env }) {
+export async function onRequestGet({ request, env }) {
+  // private: only the copier (GitHub secret WANT_KEY) reads the list
+  const key = request.headers.get("x-want-key") || "";
+  if (!env.WANT_KEY || key.length !== env.WANT_KEY.length || !timingSafeEqualStr(key, env.WANT_KEY)) return json({ error: "not found" }, { status: 404 });
   const { results } = await env.DB.prepare("SELECT slug, name, wanted_at, url FROM libs WHERE wanted = 1 AND name IS NOT NULL ORDER BY wanted_at, slug").all();
   return json({ wanted: results.map(r => r.url ? [r.slug, r.name, r.wanted_at, r.url] : [r.slug, r.name, r.wanted_at]) }, { headers: { "cache-control": "no-store" } });
 }
+
+function timingSafeEqualStr(a, b) { let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
 
 export async function onRequestPost(ctx) {
   const { request, env } = ctx;

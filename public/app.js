@@ -529,7 +529,7 @@ function fromRow(x, lib, sc, rec) {
 // Library copies are static files (made by GitHub, see the nomad-library-data repo), so opening one is a download
 // with no server work. This device keeps its own copy and uses it at once, however old; a newer one is fetched
 // in the background. If nothing is ready quickly, the shelf starts browsing live and the copy joins in later.
-const SNAP_BASE = "https://chrisgpresents.github.io/nomad-library-data/snap/";
+const SNAP_BASE = "https://nomad-library-copies.pages.dev/snap/";
 const LIVE_AFTER_MS = 1800;      // no usable copy by then: start browsing live while the download continues
 const FETCH_MS = 60000;          // hard stop for a copy download
 const KEEP_COPIES = 6;           // copies kept on this device, least recently used go first

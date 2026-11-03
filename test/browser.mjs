@@ -42,7 +42,7 @@ async function realLibraryApi(W, url) {
 const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const FIXTURE_DIR = process.env.FIXTURE_DIR || "";
 const ONLY = process.argv[2] || "";
-const HOST = "library.nomadovernormal.com", SNAPHOST = "chrisgpresents.github.io";
+const HOST = "library.nomadovernormal.com", SNAPHOST = "nomad-library-copies.pages.dev";
 let pass = 0, fail = 0;
 const results = [];
 const ok = (c, msg) => { c ? pass++ : fail++; console.log(`  ${c ? "pass" : "FAIL"}: ${msg}`); };

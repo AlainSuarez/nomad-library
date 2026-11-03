@@ -4,7 +4,7 @@ for visitors whose own library we cannot read yet. Same row format as a library 
 Row: [id, title, sub, fmt, discYear, cover, onShelf, holds, genres, tv, platform, rating, votes, imdb, filmYear]
 usage: tools/build_shelf.py"""
 import gzip, json, os, urllib.request, urllib.parse
-BASE = "https://chrisgpresents.github.io/nomad-library-data/snap/"
+BASE = "https://nomad-library-copies.pages.dev/snap/"
 OUT = os.path.join(os.path.dirname(__file__), "..", "public", "shelf.json")
 MIN_VOTES = 2000
 def get(p): return urllib.request.urlopen(urllib.request.Request(BASE + p, headers={"User-Agent": "nomad-library-build"}), timeout=120).read()

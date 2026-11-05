@@ -221,7 +221,7 @@ function merge(rows, seen) {
 function openDetail(r) {
   const yearNote = r.fy && r.disc && r.fy !== r.disc && !isGuest() ? `<b>${r.fy}</b> film, ${r.disc} disc` : `<b>${esc(filmYear(r))}</b>`;
   const fmtLabel = isGuest() ? "" : r.fmts || r.fmt;
-  const imdb = r.imdb ? `<a class="btn ghost" href="https://www.imdb.com/title/${esc(r.imdb)}/" target="_blank" rel="noopener">IMDb ${r.r ? r.r.toFixed(1) : ""}</a>` : "";
+  const imdb = r.imdb ? `<a class="btn ghost" href="https://www.imdb.com/title/${esc(r.imdb)}/" target="_blank" rel="noopener noreferrer">IMDb ${r.r ? r.r.toFixed(1) : ""}</a>` : "";
   const av = r.avail ? `<b style="color:var(--ok)">On the shelf</b>${r.eds || r.copies == null ? "" : ` · ${r.copies} of ${r.total} in`}`
     : `<b style="color:var(--stamp)">All checked out</b>${r.holds ? ` · ${r.holds} on hold` : ""}`;
   $("#detailBody").innerHTML = `<div class="in">
@@ -232,16 +232,16 @@ function openDetail(r) {
         <h2>${esc(r.title)}</h2>
         ${r.sub ? `<p class="sub">${esc(r.sub)}</p>` : ""}
         <div class="facts">${r.f === "g" ? esc(r.plat || "") || yearNote : yearNote}${fmtLabel ? ` · ${esc(fmtLabel)}` : ""}${r.r ? ` · <b>★ ${r.r.toFixed(1)}</b> from ${Number(r.v).toLocaleString()} votes` : ""}${noAvail() ? "" : `<br><span id="liveAv">${av}</span>`}</div>
-        <p id="detailSynopsis">${r.desc ? esc(r.desc) : isGuest() ? (r.imdb ? `<a href="https://www.imdb.com/title/${esc(r.imdb)}/" target="_blank" rel="noopener">Read the synopsis on IMDb</a>` : "") : `<a href="${esc(r.url)}" target="_blank" rel="noopener">Read the synopsis at your library</a>`}</p>
+        <p id="detailSynopsis">${r.desc ? esc(r.desc) : isGuest() ? (r.imdb ? `<a href="https://www.imdb.com/title/${esc(r.imdb)}/" target="_blank" rel="noopener noreferrer">Read the synopsis on IMDb</a>` : "") : `<a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">Read the synopsis at your library</a>`}</p>
         ${(r.eds && r.eds.length > 1 || isMine()) && !isGuest() ? `<div class="facts" id="edList">${editionsHTML(r)}</div>` : ""}
         <div class="actions">
           ${isGuest()
-            ? (checkUrl(r) ? `<a class="btn" href="${esc(checkUrl(r))}" target="_blank" rel="noopener">Check at ${esc(libLabel())}</a>`
+            ? (checkUrl(r) ? `<a class="btn" href="${esc(checkUrl(r))}" target="_blank" rel="noopener noreferrer">Check at ${esc(libLabel())}</a>`
               : `<button class="btn" type="button" id="addCatalog">Check at your library</button>`)
             : isMine() ? holdButtons(r)
-            : `<a class="btn" href="${esc((r.eds?.find(e => e.avail) || r).url)}" target="_blank" rel="noopener">${noAvail() ? `See it at ${esc(shortName(libLabel()))}` : r.avail ? "Place a hold" : "Get in line"}</a>`}
-          ${isMine() ? guestLibs().map(e => `<a class="btn ghost" href="${esc(searchLink(e.guest.catalog, r.title))}" target="_blank" rel="noopener">Check at ${esc(shortName(e.name) || "your other library")}</a>`).join("") : ""}
-          <a class="btn ghost" href="/t?q=${encodeURIComponent(r.title + " " + (r.fy || ""))}" target="_blank" rel="noopener" data-trailer>Trailer</a>
+            : `<a class="btn" href="${esc((r.eds?.find(e => e.avail) || r).url)}" target="_blank" rel="noopener noreferrer">${noAvail() ? `See it at ${esc(shortName(libLabel()))}` : r.avail ? "Place a hold" : "Get in line"}</a>`}
+          ${isMine() ? guestLibs().map(e => `<a class="btn ghost" href="${esc(searchLink(e.guest.catalog, r.title))}" target="_blank" rel="noopener noreferrer">Check at ${esc(shortName(e.name) || "your other library")}</a>`).join("") : ""}
+          <a class="btn ghost" href="/t?q=${encodeURIComponent(r.title + " " + (r.fy || ""))}" target="_blank" rel="noopener noreferrer" data-trailer>Trailer</a>
           ${imdb}
           <button class="btn ghost" data-fav="${esc(r.id)}">${isFav(r) ? "♥ Saved" : "♡ Save"}</button>
         </div>
@@ -267,7 +267,7 @@ function openDetail(r) {
 // One line per edition; in the combined view they're grouped under each library's name.
 function editionsHTML(r) {
   const eds = r.eds || [edition(r)];
-  const line = e => `<a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.fmt)}${e.disc ? ` (${e.disc})` : ""}</a>: ${e.avail ? `<b style="color:var(--ok)">${e.copies == null ? "on the shelf" : `${e.copies} in`}</b>` : `all out${e.holds ? `, ${e.holds} holds` : ""}`}`;
+  const line = e => `<a href="${esc(e.url)}" target="_blank" rel="noopener noreferrer">${esc(e.fmt)}${e.disc ? ` (${e.disc})` : ""}</a>: ${e.avail ? `<b style="color:var(--ok)">${e.copies == null ? "on the shelf" : `${e.copies} in`}</b>` : `all out${e.holds ? `, ${e.holds} holds` : ""}`}`;
   if (!isMine()) return eds.map(line).join("<br>");
   const libs = [...new Set(eds.map(e => e.lib))];
   return libs.map(l => `<b>${esc(libNameOf(l))}</b><br>${eds.filter(e => e.lib === l).map(line).join("<br>")}`).join("<br>");
@@ -276,7 +276,7 @@ function holdButtons(r) {
   const eds = r.eds || [edition(r)];
   return [...new Set(eds.map(e => e.lib))].map(l => {
     const mine = eds.filter(e => e.lib === l), e = mine.find(x => x.avail) || mine[0];
-    return `<a class="btn" href="${esc(e.url)}" target="_blank" rel="noopener">${e.avail ? "Place a hold" : "Get in line"} at ${esc(shortName(libNameOf(l)))}</a>`;
+    return `<a class="btn" href="${esc(e.url)}" target="_blank" rel="noopener noreferrer">${e.avail ? "Place a hold" : "Get in line"} at ${esc(shortName(libNameOf(l)))}</a>`;
   }).join("");
 }
 
@@ -816,13 +816,13 @@ function snapRender() {
     // a reminder that stays put: these are popular movies, and Check opens the visitor's own catalog
     const cat = guestCatalog(), n = snapList.length.toLocaleString();
     $("#status").innerHTML = !cat ? `${n} popular movies · <button class="link" id="addCatalogToast">Add your catalog link</button> to check them at your library`
-      : q ? `${n} matches · <a href="${esc(searchLink(cat, q))}" target="_blank" rel="noopener">Search ${esc(libLabel())} for “${esc(q)}”</a>`
+      : q ? `${n} matches · <a href="${esc(searchLink(cat, q))}" target="_blank" rel="noopener noreferrer">Search ${esc(libLabel())} for “${esc(q)}”</a>`
       : `${n} popular movies · Tap one to check it at ${esc(libLabel())}`;
   } else
   $("#status").innerHTML = `${snapList.length.toLocaleString()} ${S.fmt === "games" ? "games" : "titles"}` +
     (isMine() ? ` from ${SNAP.libs} ${SNAP.libs === 1 ? "library" : "libraries"}` : "") +
     (S.onShelf ? ` <span class="dim">· shelf status from ${when}, tap a title for right now</span>` : "") +
-    (q && isReaderLib(S.lib) ? ` · <a href="${esc(searchLink(readerCatalog(S.lib, libUrlOf(S.lib)), q))}" target="_blank" rel="noopener">Search ${esc(libLabel())} for “${esc(q)}”</a>` : "") +
+    (q && isReaderLib(S.lib) ? ` · <a href="${esc(searchLink(readerCatalog(S.lib, libUrlOf(S.lib)), q))}" target="_blank" rel="noopener noreferrer">Search ${esc(libLabel())} for “${esc(q)}”</a>` : "") +
     (q && !isMine() && !isReaderLib(S.lib) ? ` · <button class="link" id="wholeCat">Search the whole catalog for “${esc(q)}”</button>` : "") +
     (isMine() && SNAP.missing?.length ? ` <span class="dim">· ${esc(SNAP.missing.join(", "))} ${SNAP.missing.length > 1 ? "are" : "is"} still filling in, so ${SNAP.missing.length > 1 ? "they're" : "it's"} not here yet</span>` : "");
   snapMore();
@@ -1055,7 +1055,7 @@ async function showGuestWatch() {
   $("#wlStatus").textContent = `Your ${S.watch.source} watchlist, ${items.length} titles. Tap any of them to search for it at ${libLabel()}.`;
   $("#wlGrid").innerHTML = cards.map(cardHTML).join("");
   $("#wlMissing").innerHTML = rest.length
-    ? `<ul class="wl-list">${rest.map(x => `<li><a href="${esc(searchLink(cat, x.t))}" target="_blank" rel="noopener">${esc(x.t)}${x.y ? ` (${x.y})` : ""}</a></li>`).join("")}</ul>` : "";
+    ? `<ul class="wl-list">${rest.map(x => `<li><a href="${esc(searchLink(cat, x.t))}" target="_blank" rel="noopener noreferrer">${esc(x.t)}${x.y ? ` (${x.y})` : ""}</a></li>`).join("")}</ul>` : "";
 }
 
 async function showWatch() {
@@ -1683,7 +1683,7 @@ document.addEventListener("click", async e => {
   e.preventDefault();
   const q = new URL(a.href).searchParams.get("q") || "";
   const box = $("#trailer"), body = $("#trailerBody");
-  const bar = link => `<div class="tr-bar"><a href="${esc(link)}" target="_blank" rel="noopener">Watch on YouTube</a><button type="button" data-close>Close</button></div>`;
+  const bar = link => `<div class="tr-bar"><a href="${esc(link)}" target="_blank" rel="noopener noreferrer">Watch on YouTube</a><button type="button" data-close>Close</button></div>`;
   body.innerHTML = `<div class="frame"><div class="tr-msg">Finding the trailer…</div></div>${bar(a.href)}`;
   box.showModal();
   try {

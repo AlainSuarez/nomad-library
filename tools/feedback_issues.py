@@ -9,7 +9,7 @@ rewritten without names, emails or device details into a drafts file, reviewed, 
   tools/feedback_issues.py drafts.json                 # dry run: prints what would be posted
   tools/feedback_issues.py drafts.json --post          # posts, then sets feedback.status = 'issue #N'
 """
-import json, os, re, subprocess, sys
+import json, os, re, subprocess, sys, time
 
 REPO = "Chrisgpresents/nomad-library"
 ACCOUNT = "b2e213e3c7454d17fdfaf60ecde63e27"
@@ -48,7 +48,8 @@ def main():
         num = url.rsplit("/", 1)[-1]
         ids = ",".join(str(int(x)) for x in i["feedback_ids"])
         if ids: d1(f"UPDATE feedback SET status = 'issue #{num}', note = '{url}' WHERE id IN ({ids})")
-        i["posted"] = url; print(url, i["title"])
+        i["posted"] = url; print(url, i["title"], flush=True)
+        time.sleep(3)  # GitHub limits how fast new content can be created
     json.dump({"issues": issues}, open(sys.argv[1] + ".posted.json", "w"), indent=1)
 
 main()

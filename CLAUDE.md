@@ -20,4 +20,6 @@ Read README.md (architecture) and CONTRIBUTING.md (house rules) first. The short
 
 **Feedback from the site**: messages stay private in D1 `feedback`. `tools/feedback.sh N` reads them. Group new ones (status `new`) into issue drafts with no names, emails, device strings or identifying quotes, then `tools/feedback_issues.py drafts.json` (dry run) and `--post`. Posted rows get status `issue #N`.
 
+**Commits**: no `Co-Authored-By: Claude` (or any AI) trailer. The owner wants only humans in the contributor list.
+
 **Deploy**: only `tools/deploy.sh` (clean export of GitHub main + local data files). Never deploy the working copy.

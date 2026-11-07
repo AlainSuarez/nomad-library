@@ -20,12 +20,13 @@ export function best(html, q) {
     if (film && (` ${c.t} `).includes(` ${film} `)) s += 4;
     if (/\btrailer\b/.test(c.t)) s += 2;
     if (year && c.t.includes(year)) s += 1;
+    else if (year && /\b(19|20)\d{2}\b/.test(c.t)) s -= 2;   // names another year: likely a remake or a different film
     if (BAD.test(c.t)) s -= 4;
     s -= i * 0.01;                      // ties go to YouTube's own order
     if (s > top) { top = s; pick = c; }
   }
-  if (pick && top >= 4) return pick.id;
-  return found[0]?.id || (html.match(/"videoId":"([A-Za-z0-9_-]{11})"/) || [])[1] || "";
+  // Nothing names the film: show "couldn't find a trailer" (with a YouTube search link) rather than an unrelated video.
+  return pick && top >= 4 ? pick.id : "";
 }
 
 export async function onRequestGet(ctx) {
@@ -37,7 +38,7 @@ export async function onRequestGet(ctx) {
     ? new Response(JSON.stringify({ vid, search }), { headers: { "content-type": "application/json", "cache-control": "public, max-age=3600" } })
     : Response.redirect(vid ? `https://www.youtube.com/watch?v=${vid}` : search, 302);
   if (!q) return answer("");
-  const key = new Request("https://nomad-library.cache/t2/" + encodeURIComponent(q.toLowerCase()));
+  const key = new Request("https://nomad-library.cache/t3/" + encodeURIComponent(q.toLowerCase()));
   const hit = await caches.default.match(key);
   let vid = hit ? await hit.text() : null;
   if (!hit) {

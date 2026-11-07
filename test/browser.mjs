@@ -299,6 +299,18 @@ scenario("genres combine: picked genres widen, Foreign and TV narrow, with the y
   await close();
   const e4 = expect(["comedy", "romance"]), s4 = await shown();
   ok(s4 === e4 && e4 > expect(["comedy"]), `comedy or romance (romance toggled off and on): ${s4} shown, ${e4} expected`);
+  // Movies only narrows to non-TV rows, and picking TV shows unpicks it
+  await page.click("#filtBtn"); await sleep(150);
+  await pick("movies");
+  await close();
+  const isTv = r => !!r[9] || G(r).has("tv");
+  const e5 = expect(["comedy", "romance"]) - oneCardPerFilm(rows).filter(r => isTv(r) && (G(r).has("comedy") || G(r).has("romance"))).length, s5 = await shown();
+  ok(s5 === e5 && e5 > 0 && e5 <= e4, `comedy or romance, movies only: ${s5} shown, ${e5} expected`);
+  await page.click("#filtBtn"); await sleep(150);
+  await pick("tv");
+  const p5 = await page.$$eval('#filtBody [data-genre][aria-pressed="true"]', e => e.map(x => x.dataset.genre));
+  ok(p5.includes("tv") && !p5.includes("movies"), `TV shows and Movies only exclude each other (${p5})`);
+  await close();
   // a collection still replaces genres, and All clears them
   await page.click("#filtBtn"); await sleep(150);
   await page.click('#filtBody [data-coll="criterion"]'); await sleep(60);
@@ -610,7 +622,7 @@ scenario("a library we cannot read yet: browse the nationwide shelf and check ti
   const t0 = Date.now();
   await page.waitForSelector("#guestIntro[open]", { timeout: 8000 });
   const intro = await page.$eval("#guestIntro", e => e.textContent.replace(/\s+/g, " "));
-  ok(/Robeson County Public Library doesn't share its shelves with other sites/.test(intro) && /Check at Robeson County Public Library/.test(intro) && /Show me the movies/.test(intro), `a clear pop-up explains it: "${intro.slice(2, 90)}"`);
+  ok(/We can't read Robeson County Public Library's catalog yet/.test(intro) && /Check at Robeson County Public Library/.test(intro) && /Show me the movies/.test(intro), `a clear pop-up explains it: "${intro.slice(2, 90)}"`);
   await waitCards(page, 12);
   note("guest mode: paste a catalog link -> first movies (ms)", Date.now() - t0);
   ok(/Robeson County Public Library/.test(await page.$eval("#libBtn", e => e.textContent)), "header names the library (from its catalog's page title)");

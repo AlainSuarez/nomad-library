@@ -1,3 +1,5 @@
+/*
+  Referrer-Policy: no-referrer
 /ix/*
   Cache-Control: public, max-age=2592000
 /icons/*

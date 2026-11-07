@@ -343,6 +343,7 @@ function visible(rows) {
   return rows.filter(r => {
     if (S.onShelf && !r.avail) return false;
     if (S.fmt === "games") return !S.plat || r.plat === S.plat;
+    if (S.genres.includes("movies") && isTV(r)) return false;
     const year = r.fy || r.disc;
     return (!S.y0 || year >= S.y0) && (!S.y1 || (year && year <= S.y1)) &&
       (!S.minR || (r.r >= S.minR && r.v >= 500));
@@ -410,7 +411,7 @@ async function loadTop(my) {
     const all = remember(first.rows);
     const draw = () => {
       const films = merge(all, new Map());
-      const sorted = films.sort((a, b) => ((b.v >= 1000 ? b.r : 0) - (a.v >= 1000 ? a.r : 0)) || (b.v || 0) - (a.v || 0));
+      const sorted = films.sort((a, b) => ((b.v >= 1000) - (a.v >= 1000)) || ((b.r || 0) - (a.r || 0)) || ((b.v || 0) - (a.v || 0)));
       $("#grid").innerHTML = visible(sorted).slice(0, 300).map(cardHTML).join("");
     };
     await rate(all); draw();
@@ -440,14 +441,16 @@ const GENRES = [
   ["animation", "Animation", "animation"], ["family", "Family", "family"], ["fantasy", "Fantasy", "fantasy"], ["romance", "Romance", "romance"],
   ["documentary", "Documentary", "documentary"], ["foreign", "Foreign", "foreign"], ["western", "Western", "western"],
   ["war", "War", "war"], ["musical", "Musical", "musical"], ["superhero", "Superhero", "superhero"], ["biography", "Biography", "biography"],
-  ["history", "History", "history"], ["sports", "Sports", "sports"], ["tv", "TV shows", "tv"],
+  ["history", "History", "history"], ["sports", "Sports", "sports"], ["tv", "TV shows", "tv"], ["movies", "Movies only", ""],
 ];
-// Picked genres widen the shelf (horror or thriller); Foreign and TV shows narrow it (foreign horror).
-const NARROW = new Set(["foreign", "tv"]);
+// Picked genres widen the shelf (horror or thriller); Foreign, TV shows and Movies only narrow it (foreign horror).
+const NARROW = new Set(["foreign", "tv", "movies"]);
+const isTV = r => !!r.tv || (r.genres || []).includes("tv");
 function genreMatch(r) {
   if (!S.genres.length) return true;
+  if (S.genres.includes("movies") && isTV(r)) return false;
   const wide = S.genres.filter(g => !NARROW.has(g));
-  return S.genres.every(g => !NARROW.has(g) || r.genres.includes(g)) && (!wide.length || wide.some(g => r.genres.includes(g)));
+  return S.genres.every(g => !NARROW.has(g) || g === "movies" || r.genres.includes(g)) && (!wide.length || wide.some(g => r.genres.includes(g)));
 }
 // ---- search: titles, genres, actors and directors -------------------------------
 // Typed genre words match the genre ("horror", "scary movies", "kids"). Names match through ix/people/<xx>.json:
@@ -796,7 +799,7 @@ function snapFilter() {
 
 function snapSort(L) {
   const by = {
-    top: (a, b) => ((b.v >= 1000 ? b.r : 0) - (a.v >= 1000 ? a.r : 0)) || b.v - a.v,
+    top: (a, b) => ((b.v >= 1000) - (a.v >= 1000)) || ((b.r || 0) - (a.r || 0)) || ((b.v || 0) - (a.v || 0)),
     pop: (a, b) => b.v - a.v,
     title: (a, b) => norm(a.title).localeCompare(norm(b.title)),
     year: (a, b) => ((b.fy || b.disc || 0) - (a.fy || a.disc || 0)) || b.n - a.n,
@@ -932,7 +935,8 @@ $("#filtBody").addEventListener("click", e => {
   const g = e.target.closest("[data-genre]"), c = e.target.closest("[data-coll]"), p = e.target.closest("[data-plat]");
   if (g) {
     const k = g.dataset.genre;
-    S.genres = !k ? [] : S.genres.includes(k) ? S.genres.filter(x => x !== k) : [...S.genres, k];
+    S.genres = !k ? [] : S.genres.includes(k) ? S.genres.filter(x => x !== k)
+      : [...S.genres.filter(x => !(k === "movies" && x === "tv") && !(k === "tv" && x === "movies")), k];
     S.coll = ""; filtChanged();
   }
   else if (c) { S.coll = S.coll === c.dataset.coll ? "" : c.dataset.coll; if (S.coll) S.genres = []; filtChanged(); }
@@ -1273,8 +1277,7 @@ function openAccount() {
         <button class="btn ghost" id="useKey">Sign in with a passkey</button>` : ""}
         <div class="divider">or</div>
         <button class="btn ghost" id="useCode">Sign in with a backup code</button>
-        ${passkeysOK() ? `<button class="link small-print" id="mkCode" style="justify-self:center">My device can't use passkeys</button>`
-          : `<button class="btn ghost" id="mkCode">Create an account with a backup code</button>`}
+        <button class="btn ghost" id="mkCode">Create an account with a backup code</button>
       </div>
       <p class="err" id="acctErr" role="alert"></p>`);
   }
@@ -1438,8 +1441,8 @@ function guestIntro() {
     ${cat && readerId(cat) && !S.guest?.noCopy ? `<h2>We're copying ${esc(S.libName ? S.libName + "'s" : "your library's")} shelves now</h2>
       <p>It's usually ready within the hour, and this page switches to your library's own movies by itself.</p>
       <p>Until then, here are popular movies from libraries across the country. Tap any movie, then <b>Check at ${esc(at)}</b> to search your library for it.</p>`
-    : cat ? `<h2>${esc(who)} doesn't share its shelves with other sites</h2>
-      <p>So we can't show what's at ${esc(at)} right now. Here are popular movies from libraries across the country instead.</p>
+    : cat ? `<h2>We can't read ${esc(S.libName ? S.libName + "'s" : "your library's")} catalog yet</h2>
+      <p>It runs on a catalog system we haven't learned to read yet. Until we can, here are popular movies from libraries across the country.</p>
       <p>Tap any movie, then <b>Check at ${esc(at)}</b>, and your library's catalog opens with that movie already searched.</p>`
     : `<h2>We couldn't find your library's catalog</h2>
       <p>Here are popular movies from libraries across the country. Add your catalog link from the home page any time, and every movie gets a button that searches your library for it.</p>`}
@@ -1702,13 +1705,18 @@ document.addEventListener("click", e => {
   if (e.target.closest("[data-close]")) e.target.closest("dialog").close();
 });
 for (const d of document.querySelectorAll("dialog")) d.addEventListener("click", e => { if (e.target === d) d.close(); });
-$("#wlFile").onchange = async () => {
-  const f = $("#wlFile").files[0]; if (!f) return;
+async function importWatchlist(f) {
+  if (!f) return;
   const w = readWatchlist(await f.text());
   if (!w.items.length) { $("#wlStatus").textContent = "That file doesn't look like an IMDb or Letterboxd watchlist export."; return; }
   S.watch = { ...w, imported: Date.now(), matches: {} };
   save(); matchWatchlist();
-};
+}
+$("#wlFile").onchange = () => importWatchlist($("#wlFile").files[0]);
+// A file dropped on the box imports like a picked one (without this the browser offers to save it).
+$("#drop").addEventListener("dragover", e => { e.preventDefault(); $("#drop").classList.add("over"); });
+$("#drop").addEventListener("dragleave", () => $("#drop").classList.remove("over"));
+$("#drop").addEventListener("drop", e => { e.preventDefault(); $("#drop").classList.remove("over"); importWatchlist(e.dataTransfer.files[0]); });
 new IntersectionObserver(es => { if (es[0].isIntersecting && !$("#shelf").hidden && !$("#browse").hidden && S.lib) loadMore(); }, { rootMargin: "800px" }).observe($("#more"));
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
 

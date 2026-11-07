@@ -1,3 +1,5 @@
+<img src="public/icons/icon-192.png" alt="Nomad Library logo" width="96">
+
 # Nomad Library
 
 Your public library's DVDs, Blu-rays and games on one shelf you can actually browse, with ratings, trailers, filters and a watchlist. Free, no ads.

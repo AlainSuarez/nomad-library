@@ -2,6 +2,8 @@
 
 Thanks for wanting to help. Nomad Library is run by one person ([Nomad Over Normal](https://www.youtube.com/@NomadOverNormal)), so small, focused changes get reviewed fastest.
 
+Use whatever tools you like. You don't need Claude or any AI tool to contribute. `CLAUDE.md` is just a set of notes for people who happen to use one.
+
 ## Reporting a problem
 
 [Open an issue](https://github.com/Chrisgpresents/nomad-library/issues/new/choose) and pick the form that fits. For a library that doesn't work, include your library's catalog link (the page where you search for books). Search the open issues first, and add a thumbs-up to an existing one instead of opening a copy. That's how we tell what matters most.

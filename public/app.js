@@ -1649,10 +1649,11 @@ function openLibs() {
 $("#home").onclick = e => { e.preventDefault(); showHome(); };
 $("#resume").onclick = () => boot();
 $("#acctBtn").onclick = openAccount;
-// ---- feedback (Chris 11.1.26): saved to D1 `feedback`, read with tools/feedback.sh --------------------------------
+// ---- feedback (Chris 11.1.26): saved to D1 `feedback`, read with tools/feedback.sh; problems become GitHub issues via tools/feedback_issues.py --------------------------------
 function openFeedback() {
   acctView(`<h2>Send feedback</h2>
     <p>Something broken, confusing or missing? Tell us.</p>
+    <p class="fb-gh">Your message stays private. We post the problem itself, without your name or email, on <a href="https://github.com/Chrisgpresents/nomad-library/issues" target="_blank" rel="noopener noreferrer">GitHub</a>, where anyone can follow the fix or help.</p>
     <form class="fb-form" id="fbForm" novalidate><div class="stack">
       <textarea name="message" maxlength="4000" required aria-label="Your feedback"></textarea>
       <input type="email" name="email" autocomplete="email" placeholder="Your email, if you'd like a reply" aria-label="Your email, if you'd like a reply">

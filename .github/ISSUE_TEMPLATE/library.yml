@@ -1,0 +1,24 @@
+name: My library doesn't work
+description: Your library won't open, or only shows the popular shelf.
+labels: [library-request]
+body:
+  - type: markdown
+    attributes:
+      value: Search the open [library requests](https://github.com/Chrisgpresents/nomad-library/labels/library-request) first. If your library's system is already listed, add a thumbs-up and your link there.
+  - type: input
+    id: name
+    attributes:
+      label: Library name
+      placeholder: Springfield Public Library
+    validations: { required: true }
+  - type: input
+    id: link
+    attributes:
+      label: Catalog link
+      description: Open your library's catalog, search for any movie, and paste that page's address.
+      placeholder: https://catalog.springfieldlibrary.org/search?q=casablanca
+    validations: { required: true }
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens on Nomad Library?

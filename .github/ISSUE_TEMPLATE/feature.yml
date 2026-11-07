@@ -1,0 +1,10 @@
+name: Idea
+description: Something that would make the site better.
+labels: [feature]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+      description: What you're trying to do, and how it would work.
+    validations: { required: true }

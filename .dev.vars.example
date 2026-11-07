@@ -1,0 +1,2 @@
+AUTH_SECRET=local-dev-only-change-me
+WANT_KEY=local-dev-only

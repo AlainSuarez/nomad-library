@@ -1,0 +1,26 @@
+name: Something's broken
+description: A page, button, movie or shelf isn't working right.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you saw instead.
+    validations: { required: true }
+  - type: input
+    id: library
+    attributes:
+      label: Your library's catalog link
+      description: The page where you search your library. Leave blank if it isn't about a library.
+      placeholder: https://yourlibrary.bibliocommons.com
+  - type: input
+    id: device
+    attributes:
+      label: Phone or computer, and browser
+      placeholder: iPhone, Safari
+  - type: textarea
+    id: shots
+    attributes:
+      label: Screenshot
+      description: Drag one in if you can.

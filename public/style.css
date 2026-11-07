@@ -47,6 +47,7 @@ button.navlink { background: none; border: 0; color: inherit; font-family: inher
 .fb-form textarea { width: 100%; min-height: 130px; resize: vertical; padding: 12px 14px; border: 1.5px solid var(--ink); border-radius: var(--r); background: var(--paper); color: var(--ink); font: inherit; font-size: 16px; }
 .fb-form input[type=email] { width: 100%; padding: 12px 14px; border: 1.5px solid var(--ink); border-radius: var(--r); background: var(--paper); color: var(--ink); font: inherit; font-size: 16px; }
 .fb-form .stack { display: grid; gap: 10px; }
+.fb-gh { font-size: 13px; opacity: .75; margin-top: -4px; } .fb-gh a { color: inherit; text-decoration: underline; }
 .fb-form .err:empty { display: none; }
 .fb-form .err { margin: 0; font-size: 14px; }
 .brand img { border-radius: var(--r); }

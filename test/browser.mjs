@@ -1,6 +1,6 @@
 // Real-browser checks of the site's catalog loading, with the whole network mocked (nothing leaves the machine).
 //   node test/browser.mjs [scenario-name-fragment]
-// Needs Chrome and puppeteer-core (found in ~/node_modules). Large fixtures use the real catalogs published for
+// Needs Chrome (CHROME_PATH, or the usual Mac/Linux install) and puppeteer-core (npm install). Run tools/fetch_data.sh first. Large fixtures use the real catalogs published for
 // the six finished libraries when available (set FIXTURE_DIR), otherwise generated rows.
 import { createRequire } from "node:module";
 import fs from "node:fs";
@@ -9,8 +9,9 @@ import path from "node:path";
 import zlib from "node:zlib";
 import { pathToFileURL } from "node:url";
 
-const require = createRequire(path.join(os.homedir(), "node_modules") + "/");
-const puppeteer = require("puppeteer-core");
+let puppeteer;
+try { puppeteer = createRequire(import.meta.url)("puppeteer-core"); }
+catch { puppeteer = createRequire(path.join(os.homedir(), "node_modules") + "/")("puppeteer-core"); }
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const PUBLIC = path.join(ROOT, "public");
 const { shape } = await import(pathToFileURL(path.join(ROOT, "lib/core.js")).href);
@@ -39,7 +40,7 @@ async function realLibraryApi(W, url) {
     return { status: res.status, body: await res.text() };
   } finally { globalThis.fetch = realFetch; }
 }
-const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const CHROME = process.env.CHROME_PATH || ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium"].find(p => fs.existsSync(p));
 const FIXTURE_DIR = process.env.FIXTURE_DIR || "";
 const ONLY = process.argv[2] || "";
 const HOST = "library.nomadovernormal.com", SNAPHOST = "nomad-library-copies.pages.dev";
@@ -919,7 +920,7 @@ scenario("several library cards: the list remembers each library, All my librari
 });
 
 // ---- run ------------------------------------------------------------------------------------------------
-const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ["--no-first-run", "--disable-gpu"] });
+const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ["--no-first-run", "--disable-gpu", ...(process.env.CI ? ["--no-sandbox"] : [])] });
 try {
   for (const [name, fn] of SCENARIOS) {
     if (ONLY && !name.includes(ONLY)) continue;

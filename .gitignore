@@ -2,3 +2,11 @@ node_modules
 .wrangler
 .dev.vars
 brand/codex.log
+# Built from IMDb data (personal/non-commercial license): not redistributed here. tools/fetch_data.sh
+public/ix/
+public/shelf.json
+# Maintainer-only notes and scratch
+notes/
+output/
+fixtures/
+__pycache__/

@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Not on GitHub? Use the Feedback button on the site
+    url: https://library.nomadovernormal.com
+    about: Messages stay private. The problem gets posted here without your name or email.
+  - name: Security problem
+    url: https://github.com/Chrisgpresents/nomad-library/security/advisories/new
+    about: Report it privately, please.

@@ -15,6 +15,19 @@ Your public library's DVDs, Blu-rays and games on one shelf you can actually bro
 
 The library copier (the part that copies catalogs so shelves open instantly) lives in [nomad-library-data](https://github.com/Chrisgpresents/nomad-library-data). New catalog systems are added there as readers.
 
+## Biggest things we need help with
+
+Counts are people who asked, through the site's Feedback button and the YouTube comments on the launch video.
+
+1. **More library catalog systems (US and Canada).** 48 people are waiting. Each catalog product needs a small reader in [nomad-library-data/readers](https://github.com/Chrisgpresents/nomad-library-data/tree/main/readers) that copies its DVDs, Blu-rays and games into a static file. Evergreen and Koha run whole statewide networks, so one reader can open hundreds of libraries. The hard part: every product shapes its pages differently, some sit behind bot walls this project won't get around, and readers have to stay slow and gentle on library servers. [Library requests by system](https://github.com/Chrisgpresents/nomad-library/labels/library-request)
+2. **Libraries outside North America.** 74 people are waiting, in Germany, the UK, France, Denmark, Belgium, Switzerland, Australia and more. Often one platform serves a whole region (Bibliotheca OPEN, bibliotek.dk, Prism), so one reader can open a country. We need people who know which system their library runs and how discs are labeled in their language. Records carry local titles, so matching needs the original title, year or barcode.
+3. **Matching each disc to the right film.** Catalogs give the disc's year, edition notes and sometimes a translated title, and the browser has to guess which IMDb title it is. Same-name films (Cosmos 1980 and 2019) get the wrong rating, trailer or cover. Matching runs in the visitor's browser against compact rating files, so better rules (runtime, director, barcode, TV or film) have to stay small and fast. [#16](https://github.com/Chrisgpresents/nomad-library/issues/16)
+4. **Cover art for every title.** Some catalogs have no covers (CARL, Spydus), tiny ones, or ones that fail for part of the shelf. A fallback needs a source whose terms allow it, and a reliable film match first. [#4](https://github.com/Chrisgpresents/nomad-library/issues/4) [#18](https://github.com/Chrisgpresents/nomad-library/issues/18)
+5. **A directory of libraries that work.** Most people don't know their catalog link and paste the homepage. Working links are already saved per library, so a searchable list by state or ZIP is mostly a data and design job, plus people with local knowledge filling the gaps. [#21](https://github.com/Chrisgpresents/nomad-library/issues/21)
+6. **Which branch has the copy.** "On the shelf" can mean a branch 30 minutes away. Each reader would need to keep holdings per branch. [#17](https://github.com/Chrisgpresents/nomad-library/issues/17)
+
+**Bigger ideas (open an issue to talk first):** books, music CDs and audiobooks are the most requested addition (36 people), but there's no IMDb for them, so ratings, covers and matching need new sources, and book catalogs are about 10 times the size. [#10](https://github.com/Chrisgpresents/nomad-library/issues/10) [#12](https://github.com/Chrisgpresents/nomad-library/issues/12)
+
 ## Run it on your computer
 
 ```sh
